@@ -34,7 +34,7 @@ class miniDota:
         self.learningRate = 0.001
         self.gamma = 0.999
         self.memorySize = 10000
-        self.thresStart, self.thresEnd, self.thresDecay = 0.3, 0.05, 1000
+        self.thresStart, self.thresEnd, self.thresDecay = 0.3, 0, 1000
         
         self.saveModel = saveModel
         self.loadModel = loadModel
@@ -147,7 +147,7 @@ class miniDota:
             ax.set_ylabel('Y')
             ax.set_xlim(-1, 51)
             ax.set_ylim(-1, 51)
-            ax.plot(50, 50, '*r')
+            ax.plot(30, 40, '*r', markersize=10)
             attX, attY = [], []
             for idx, a in enumerate(attack):
                 if a == 1:
@@ -159,7 +159,7 @@ class miniDota:
 class gameEngine:
     def __init__(self):
         self.xlimit, self.ylimit = 50, 50
-        self.baseX, self.baseY = 50, 50
+        self.baseX, self.baseY = 30, 40
         self.posX, self.posY = 0, 0
         self.timestamp = 0
         self.maxTime = 1000
@@ -184,7 +184,7 @@ class gameEngine:
         hitpoint = 0
         consumption = 0
         if action % 2 == 1:# attack.
-            if prevDist < 10:
+            if prevDist < 5:
                 hitpoint = 1
                 self.enemyBaseHealth -= hitpoint
                 if self.enemyBaseHealth == 0:
