@@ -43,7 +43,8 @@ class Actor(nn.Module):
             std = torch.exp(logstd)
             return mu, std, logstd # std is always 1.
         elif self.args.actionType == 'discrete':
-            mu = (torch.tanh(mu) + 1) / 2 # each item is within (0, 1).
+            mu = torch.tanh(mu) / 2 * (1 - 2 * self.args.randomActionRatio) + 1 / 2
+                # each item is within (randomActionRatio, 1 - randomActionRatio).
             return mu
 
 

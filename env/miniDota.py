@@ -1,7 +1,6 @@
 '''
-Env.
+miniDota environment.
 '''
-import math
 import numpy as np
 import sys
 
@@ -15,7 +14,7 @@ class miniDotaEnv:
     def __init__(self, args, num_agent):
         self.xlimit, self.ylimit = 50, 50
         self.baseX, self.baseY = 30, 30
-        self.maxTime = 500
+        self.maxTime = 250
         self.enemyBaseHealthInit = 100
         self.args = args
         self.num_agent = num_agent
@@ -27,6 +26,7 @@ class miniDotaEnv:
             # col-0: posX, col-1: posY, col-2:enemyBaseHealth, 
         self.stateArray[:, 2] = [self.enemyBaseHealthInit] * self.num_agent
         self.done = np.zeros(self.num_agent).astype(bool)
+        self.prevDone = np.zeros(self.num_agent).astype(bool)
         self.timestamp = 0
         return {'observations':self.stateArray.copy(), 'rewards':np.zeros(self.num_agent).copy(), 
                 'local_done':self.done.copy()}
@@ -64,6 +64,8 @@ class miniDotaEnv:
         hitpoint = np.logical_and(np.logical_and(np.less_equal(prevDist, 5), attack), ~self.done).astype(int)
         self.stateArray[:, 2] = self.stateArray[:, 2] - hitpoint # enemy base health.
         self.done = np.less_equal(self.stateArray[:, 2], 0)
+        self.defeat = np.logical_and(self.done, ~self.prevDone)
+        self.prevDone = self.done
         consumption = np.logical_and(np.logical_or(np.greater(prevDist, 5), self.done), attack).astype(int)
 #        if attack:
 #            if prevDist <= 5:# attack distance.
@@ -82,9 +84,10 @@ class miniDotaEnv:
         
         distReward = -newDist
         attackReward = hitpoint
-        rewards = 0.1*distReward + 1*attackReward - 0.1*consumption + 100*self.done.astype(int)
+        rewards = 0.1*distReward + 10*attackReward - 0.1*consumption + 1000*self.defeat.astype(int)
         return {'observations':self.stateArray.copy(), 
                 'rewards':rewards.copy(), 'local_done':self.done.copy()}
+                # copy() needed to prevent these value from being changed by processing.
     
     def close(self):
         pass

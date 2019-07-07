@@ -1,19 +1,16 @@
 '''
 To do:
-    1 remove the 100 reward after first defeat.
-    2 add a 0.05 threshold to network output.
-    3 use mask to make an end.
+    1 use mask to make an end.
+    2 accelerate the environment update.
 '''
 
 import os
-import platform
 import torch
 import argparse
 import numpy as np
 import torch.optim as optim
 from model import Actor, Critic
 from utils.utils import to_tensor, get_action, save_checkpoint
-from collections import deque
 from utils.running_state import ZFilter
 from utils.memory import Memory
 from agent.ppo import process_memory, train_model
@@ -21,11 +18,7 @@ from env.miniDota import miniDotaEnv
 import matplotlib.pyplot as plt
 import sys
 
-parser = argparse.ArgumentParser(description='Setting for unity walker agent')
-parser.add_argument('--render', default=False, action='store_true',
-                    help='if you dont want to render, set this to False')
-parser.add_argument('--train', default=False, action='store_true',
-                    help='if you dont want to train, set this to False')
+parser = argparse.ArgumentParser(description='Setting for agent')
 parser.add_argument('--load_model', type=str, default=None)
 parser.add_argument('--gamma', type=float, default=0.995, help='discount factor')
 parser.add_argument('--lamda', type=float, default=0.95, help='GAE hyper-parameter')
@@ -44,44 +37,44 @@ parser.add_argument('--clip_param', type=float, default=0.1,
                     help='hyper parameter for ppo policy loss and value loss')
 parser.add_argument('--activation', type=str, default='tanh',
                     help='you can choose between tanh and swish')
-parser.add_argument('--logdir', type=str, default='logs',
-                    help='tensorboardx logs directory')
-parser.add_argument('--env', type=str, default='plane',
-                    help='environment, plane or curved')
 parser.add_argument('--actionType', type=str, default='discrete',
                     help='The action is either discrete or continuous.')
+parser.add_argument('--randomActionRatio', type=float, default=0.05,
+                    help='A minimum number of random action is enforced.')
 args = parser.parse_args()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def draw(record, baseX, baseY, iteration):
-    if os.name == 'nt':
-        record = np.stack(record)
-        fig, ax = plt.subplots(figsize=(6,5))
-        x, y = record[:, 0].tolist(), record[:, 1].tolist()
-        stop, attack = record[:, 3].tolist(), record[:, 4].tolist()
-        ax.plot(x, y, '-')
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_xlim(-1, 51)
-        ax.set_ylim(-1, 51)
-        ax.plot(baseX, baseY, '*r', markersize=10)
-        attX, attY = [], []
-        stopX, stopY = [], []
-        for idx, a in enumerate(attack):
-            if a == 1:
-                attX.append(x[idx])
-                attY.append(y[idx])
-            if stop[idx] == 1:
-                stopX.append(x[idx])
-                stopY.append(y[idx])
-        ax.plot(attX, attY, 'x', color='chocolate')
-#        ax.plot(stopX, stopY, 'o', markersize=3, color='forestgreen')
-        plt.title('iteration-%d' % iteration)
-        plt.tight_layout()
-        plt.savefig('output/iter-%d.png' % iteration)
-        plt.close()
+    '''
+    Draw the action trace of an agent.
+    '''
+    record = np.stack(record)
+    fig, ax = plt.subplots(figsize=(6,5))
+    x, y = record[:, 0].tolist(), record[:, 1].tolist()
+#    stop, attack = record[:, 3].tolist(), record[:, 4].tolist()
+    ax.plot(x, y, '-')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_xlim(-1, 51)
+    ax.set_ylim(-1, 51)
+    ax.plot(baseX, baseY, '*r', markersize=10)
+#    attX, attY = [], []
+#    stopX, stopY = [], []
+#    for idx, a in enumerate(attack):
+#        if a == 1:
+#            attX.append(x[idx])
+#            attY.append(y[idx])
+#        if stop[idx] == 1:
+#            stopX.append(x[idx])
+#            stopY.append(y[idx])
+#    ax.plot(attX, attY, 'x', markersize=3, color='chocolate')
+#    ax.plot(stopX, stopY, 'o', markersize=3, color='forestgreen')
+    plt.title('iteration-%d' % iteration)
+    plt.tight_layout()
+    plt.savefig('output/iter-%d.png' % iteration)
+    plt.close()
 
 def check(var):
     print(var)
@@ -90,15 +83,11 @@ def check(var):
         sys.exit()
 
 if __name__ == "__main__":
-    train_mode = args.train
-    torch.manual_seed(0)
+    torch.manual_seed(1)
 
     num_inputs = 3
     num_actions = 5
-    num_agent = 10
-        # better use a lot of agents.
-        # multiple agents are running synchronously.
-
+    num_agent = 10 # multiple agents are running synchronously.
     print('state size:', num_inputs)
     print('action size:', num_actions)
     print('agent count:', num_agent)
@@ -106,12 +95,12 @@ if __name__ == "__main__":
     env = miniDotaEnv(args, num_agent)
     env_info = env.reset()
 
-    # running average of state
+    # ZFilter handles a running average of states.
     running_state = ZFilter((num_agent,num_inputs), clip=5)
 
+    # initialize the neural networks.
     actor = Actor(num_inputs, num_actions, args).to(device)
     critic = Critic(num_inputs, args).to(device)
-
     if torch.cuda.is_available():
         actor = actor.cuda()
         critic = critic.cuda()
@@ -129,7 +118,7 @@ if __name__ == "__main__":
 
         print("Loaded OK ex. Zfilter N {}".format(running_state.rs.n))
 
-    states = running_state(env_info['observations'])
+    states = running_state(env_info['observations']) # get initial state.
         # states: 2d tensor.
         # the running_state() will normalize the input.
 
@@ -145,12 +134,12 @@ if __name__ == "__main__":
             print('Start iterations..')
         actor.eval(), critic.eval()
         memory = [Memory() for _ in range(num_agent)]
-            # memory is cleared at every iter so only the current iter's sample are used in RL.
+            # memory is cleared at every iter so only the current iteration's sample are used in training.
 
         steps = 0
         score = 0
-
-        record = []
+        record = [np.array([0,0,100,0,0])] # record states for drawing.
+        
         lastDones = np.zeros(num_agent).astype(bool)
         while steps <= args.time_horizon: # loop for one round of game.
             steps += 1
@@ -163,10 +152,7 @@ if __name__ == "__main__":
 
             env_info = env.step(actions) # environment runs one step given the action.
             next_states = running_state(env_info['observations']) # get the next state.
-            
-#            if (len(scores)+1) % 10 == 0:
             record.append(np.concatenate([env_info['observations'][0], np.array([actions[0, 0]]), np.array([actions[0, 4]])], axis=0))
-
             rewards = env_info['rewards']
 #            dones = env_info['local_done']
 
@@ -193,7 +179,7 @@ if __name__ == "__main__":
             
 #            lastDones = dones.copy()
 
-        actor.train(), critic.train()
+        actor.train(), critic.train() # change to training mode.
 
         sts, ats, returns, advants, old_policy, old_value = [], [], [], [], [], []
 
@@ -216,7 +202,7 @@ if __name__ == "__main__":
 
         train_model(actor, critic, actor_optim, critic_optim, sts, ats, returns, advants,
                     old_policy, old_value, args)
-            # training is based on the state-action pairs from one iteration.
+            # training is based on the state-action pairs from the current iteration.
 
         if iter % 100:
             score_avg = int(score_avg)
