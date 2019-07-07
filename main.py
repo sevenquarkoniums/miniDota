@@ -1,3 +1,10 @@
+'''
+To do:
+    1 remove the 100 reward after first defeat.
+    2 add a 0.05 threshold to network output.
+    3 use mask to make an end.
+'''
+
 import os
 import platform
 import torch
@@ -24,9 +31,9 @@ parser.add_argument('--gamma', type=float, default=0.995, help='discount factor'
 parser.add_argument('--lamda', type=float, default=0.95, help='GAE hyper-parameter')
 parser.add_argument('--hidden_size', type=int, default=512,
                     help='hidden unit size of actor and critic networks')
-parser.add_argument('--critic_lr', type=float, default=0.0003)
-parser.add_argument('--actor_lr', type=float, default=0.0003)
-parser.add_argument('--batch_size', type=int, default=64)
+parser.add_argument('--critic_lr', type=float, default=0.0001)
+parser.add_argument('--actor_lr', type=float, default=0.0001)
+parser.add_argument('--batch_size', type=int, default=1024)
 parser.add_argument('--max_iter', type=int, default=1000,
                     help='the number of max iteration')
 parser.add_argument('--time_horizon', type=int, default=1000,
@@ -48,9 +55,9 @@ args = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def draw(record, baseX, baseY):
+def draw(record, baseX, baseY, iteration):
     if os.name == 'nt':
-        record = np.concatenate(record)
+        record = np.stack(record)
         fig, ax = plt.subplots(figsize=(6,5))
         x, y = record[:, 0].tolist(), record[:, 1].tolist()
         stop, attack = record[:, 3].tolist(), record[:, 4].tolist()
@@ -70,8 +77,11 @@ def draw(record, baseX, baseY):
                 stopX.append(x[idx])
                 stopY.append(y[idx])
         ax.plot(attX, attY, 'x', color='chocolate')
-        ax.plot(stopX, stopY, 'o', markersize=3, color='forestgreen')
-        plt.show()
+#        ax.plot(stopX, stopY, 'o', markersize=3, color='forestgreen')
+        plt.title('iteration-%d' % iteration)
+        plt.tight_layout()
+        plt.savefig('output/iter-%d.png' % iteration)
+        plt.close()
 
 def check(var):
     print(var)
@@ -81,14 +91,11 @@ def check(var):
 
 if __name__ == "__main__":
     train_mode = args.train
-    torch.manual_seed(500)
-
-    env = miniDotaEnv(args)
-    env_info = env.reset()
+    torch.manual_seed(0)
 
     num_inputs = 3
     num_actions = 5
-    num_agent = 1 
+    num_agent = 10
         # better use a lot of agents.
         # multiple agents are running synchronously.
 
@@ -96,6 +103,9 @@ if __name__ == "__main__":
     print('action size:', num_actions)
     print('agent count:', num_agent)
     
+    env = miniDotaEnv(args, num_agent)
+    env_info = env.reset()
+
     # running average of state
     running_state = ZFilter((num_agent,num_inputs), clip=5)
 
@@ -141,7 +151,8 @@ if __name__ == "__main__":
         score = 0
 
         record = []
-        while steps < args.time_horizon: # loop for one round of game.
+        lastDones = np.zeros(num_agent).astype(bool)
+        while steps <= args.time_horizon: # loop for one round of game.
             steps += 1
             if args.actionType == 'continuous':
                 mu, std, _ = actor(to_tensor(states)) # get action probability from the actor network.
@@ -152,23 +163,24 @@ if __name__ == "__main__":
 
             env_info = env.step(actions) # environment runs one step given the action.
             next_states = running_state(env_info['observations']) # get the next state.
-            if (len(scores)+1) % 10 == 0:
-                actionPart = np.zeros((actions.shape[0], 2))
-                actionPart[:, 0] = actions[:, 0]
-                actionPart[:, 1] = actions[:, 4]
-                record.append(np.concatenate([env_info['observations'], actionPart], axis=1))
-            rewards = env_info['rewards']
-            dones = env_info['local_done']
+            
+#            if (len(scores)+1) % 10 == 0:
+            record.append(np.concatenate([env_info['observations'][0], np.array([actions[0, 0]]), np.array([actions[0, 4]])], axis=0))
 
-            masks = list(~(np.array(dones)))
+            rewards = env_info['rewards']
+#            dones = env_info['local_done']
+
+#            masks = list(~(np.array(dones))) # cut the return calculation at the done point.
+            masks = [True] * num_agent
 
             for i in range(num_agent):
                 memory[i].push(states[i], actions[i], rewards[i], masks[i])
 
-            score += rewards[0]
+            score += rewards[0] # only for one agent.
             states = next_states
 
-            if dones[0]:
+#            if (dones[0] and not lastDones[0]) or steps == args.time_horizon:
+            if steps == args.time_horizon:
                 scores.append(score)
                 score = 0
                 episodes = len(scores)
@@ -176,9 +188,10 @@ if __name__ == "__main__":
                     score_avg = np.mean(scores[-min(10, episodes):])
                     print('{}-th episode : last 10 episode mean score of 1st agent is {:.2f}'.format(
                         episodes, score_avg))
-                    draw(record, 30, 30)
+                draw(record, 30, 30, iter)
                 env.reset()
-                break
+            
+#            lastDones = dones.copy()
 
         actor.train(), critic.train()
 
