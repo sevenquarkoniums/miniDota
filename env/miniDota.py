@@ -58,15 +58,14 @@ class miniDotaEnv:
 #            elif up and not down and self.posY < self.ylimit:
 #                self.posY += 1
                 
-        newDist = self.__dist__()
-        consumption = np.zeros(self.num_agent)
+#        newDist = self.__dist__()
         
         hitpoint = np.logical_and(np.logical_and(np.less_equal(prevDist, 5), attack), ~self.done).astype(int)
         self.stateArray[:, 2] = self.stateArray[:, 2] - hitpoint # enemy base health.
         self.done = np.less_equal(self.stateArray[:, 2], 0)
         self.defeat = np.logical_and(self.done, ~self.prevDone)
         self.prevDone = self.done
-        consumption = np.logical_and(np.logical_or(np.greater(prevDist, 5), self.done), attack).astype(int)
+#        consumption = np.logical_and(np.logical_or(np.greater(prevDist, 5), self.done), attack).astype(int)
 #        if attack:
 #            if prevDist <= 5:# attack distance.
 #                hitpoint = 1
@@ -82,9 +81,10 @@ class miniDotaEnv:
 #        if self.timestamp == self.maxTime:
 #            self.done = 1
         
-        distReward = -newDist
+#        distReward = -newDist
         attackReward = hitpoint
-        rewards = 0.1*distReward + 10*attackReward - 0.1*consumption + 1000*self.defeat.astype(int)
+        rewards = 1*attackReward + 100*self.defeat.astype(int)
+#        rewards = 0.1*distReward + 10*attackReward - 0.1*consumption + 1000*self.defeat.astype(int)
         return {'observations':self.stateArray.copy(), 
                 'rewards':rewards.copy(), 'local_done':self.done.copy()}
                 # copy() needed to prevent these value from being changed by processing.

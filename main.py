@@ -2,6 +2,9 @@
 To do:
     1 use mask to make an end.
     2 accelerate the environment update.
+    3 make the numpy calculation into pytorch.
+    4 add another player.
+    5 add RNN.
 '''
 
 import os
@@ -82,7 +85,50 @@ def check(var):
     if i == 'q':
         sys.exit()
 
-if __name__ == "__main__":
+def main():
+    train()
+#    behavior()
+    
+def behavior():
+    '''
+    Have problem.
+    '''
+    actor = Actor(3, 5, args).to(device)
+    critic = Critic(3, args).to(device)
+    saved_ckpt_path = os.path.join(os.getcwd(), 'save_model', str(args.load_model))
+    ckpt = torch.load(saved_ckpt_path)
+    actor.load_state_dict(ckpt['actor'])
+    critic.load_state_dict(ckpt['critic'])
+
+    for enemyBaseHealth in [100, 50, 1, 0]:
+        allinput = []
+        for posX in range(51):
+            for posY in range(51):
+                allinput.append([posX, posY, enemyBaseHealth])
+        with torch.no_grad():
+            inputs = to_tensor(allinput)
+            mu = actor(inputs)
+            mu = torch.cat([inputs, mu], dim=1)
+        for action in range(4):
+            fig, ax = plt.subplots(figsize=(7,7))
+            value = np.empty((51, 51))
+            for row in range(51):
+                for col in range(51):
+                    value[row, col] = mu[51*col + 50 - row, 3+action].item() # (x, y) = (col, 50-row)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_xlim(-1, 51)
+            ax.set_ylim(-1, 51)
+            value[0, 50] = 1
+            value[0, 0] = 0
+            ax.imshow(value, cmap='hot', interpolation='nearest')
+            ax.plot(30, 30, '*r', markersize=10)
+            plt.title('Health %d Action-%d' % (enemyBaseHealth, action))
+            plt.tight_layout()
+            plt.savefig('Health%dAction%dat.png' % (enemyBaseHealth, action))
+            plt.close()
+
+def train():
     torch.manual_seed(1)
 
     num_inputs = 3
@@ -140,7 +186,7 @@ if __name__ == "__main__":
         score = 0
         record = [np.array([0,0,100,0,0])] # record states for drawing.
         
-        lastDones = np.zeros(num_agent).astype(bool)
+#        lastDones = np.zeros(num_agent).astype(bool)
         while steps <= args.time_horizon: # loop for one round of game.
             steps += 1
             if args.actionType == 'continuous':
@@ -224,3 +270,8 @@ if __name__ == "__main__":
             }, filename=ckpt_path)
 
     env.close()
+
+if __name__ == "__main__":
+    main()
+    
+    
