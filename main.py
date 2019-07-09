@@ -3,8 +3,6 @@ To do:
     1 use mask to make an end.
     2 accelerate the environment update.
     3 make the numpy calculation into pytorch.
-    4 add another player.
-    5 add RNN.
 '''
 
 import os
@@ -86,12 +84,12 @@ def check(var):
         sys.exit()
 
 def main():
-    train()
-#    behavior()
+#    train()
+    behavior()
     
 def behavior():
     '''
-    Have problem.
+    Draw the action probability of the agent at different states.
     '''
     actor = Actor(3, 5, args).to(device)
     critic = Critic(3, args).to(device)
@@ -99,16 +97,29 @@ def behavior():
     ckpt = torch.load(saved_ckpt_path)
     actor.load_state_dict(ckpt['actor'])
     critic.load_state_dict(ckpt['critic'])
+    running_state = ZFilter((10, 3), clip=5)
+    running_state.rs.n = ckpt['z_filter_n']
+    running_state.rs.mean = ckpt['z_filter_m']
+    running_state.rs.sum_square = ckpt['z_filter_s']
+    actionstr = {0:'left', 1:'right', 2:'down', 3:'up'}
 
-    for enemyBaseHealth in [100, 50, 1, 0]:
+    for enemyBaseHealth in [100,50,1]:
         allinput = []
         for posX in range(51):
             for posY in range(51):
                 allinput.append([posX, posY, enemyBaseHealth])
+        allinput = np.array(allinput)
+        normalized = []
+        for i in range(0, 2592, 10):
+            normalized.append(running_state(allinput[i:i+10,:]))
+        ending = running_state(allinput[2591:2601,:])
+        ending2d = np.empty((1, 3))
+        ending2d[0,:] = ending[-1,:]
+        normalized.append(ending2d)
+        allNormalized = np.concatenate(normalized, axis=0)
         with torch.no_grad():
-            inputs = to_tensor(allinput)
-            mu = actor(inputs)
-            mu = torch.cat([inputs, mu], dim=1)
+            mu = actor(to_tensor(allNormalized))
+        mu = torch.cat([to_tensor(allNormalized), mu], dim=1)
         for action in range(4):
             fig, ax = plt.subplots(figsize=(7,7))
             value = np.empty((51, 51))
@@ -117,13 +128,10 @@ def behavior():
                     value[row, col] = mu[51*col + 50 - row, 3+action].item() # (x, y) = (col, 50-row)
             ax.set_xlabel('X')
             ax.set_ylabel('Y')
-            ax.set_xlim(-1, 51)
-            ax.set_ylim(-1, 51)
-            value[0, 50] = 1
-            value[0, 0] = 0
-            ax.imshow(value, cmap='hot', interpolation='nearest')
+            plt.imshow(value, cmap='Greens', interpolation='spline36', vmin=0.05, vmax=0.95)
+            plt.colorbar()
             ax.plot(30, 30, '*r', markersize=10)
-            plt.title('Health %d Action-%d' % (enemyBaseHealth, action))
+            plt.title('Health %d Action-%s' % (enemyBaseHealth, actionstr[action]))
             plt.tight_layout()
             plt.savefig('Health%dAction%dat.png' % (enemyBaseHealth, action))
             plt.close()
@@ -197,7 +205,9 @@ def train():
                 actions = get_action(mu, None, args.actionType)
 
             env_info = env.step(actions) # environment runs one step given the action.
-            next_states = running_state(env_info['observations']) # get the next state.
+            next_states = running_state(env_info['observations'])
+                # get the next state.
+                # running_state normalizes the input.
             record.append(np.concatenate([env_info['observations'][0], np.array([actions[0, 0]]), np.array([actions[0, 4]])], axis=0))
             rewards = env_info['rewards']
 #            dones = env_info['local_done']
