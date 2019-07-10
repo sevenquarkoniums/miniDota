@@ -1,6 +1,44 @@
 import torch
 import math
 
+def check(var):
+    print(var)
+    try:
+        i = input()
+        if i == 'q':
+            sys.exit()
+    except KeyboardInterrupt:
+        sys.exit()
+
+def get_one_hot(targets, nb_classes):
+    res = np.eye(nb_classes)[np.array(targets).reshape(-1)]
+    return res.reshape(list(targets.shape)+[nb_classes])
+
+def unitEmbed(agent):
+    mapp = [[ 0.8789365 , -1.46669075, -0.8060484 , -0.00359309,  0.68484395,
+         0.60168591,  0.83205078,  0.25865925,  1.71127154, -0.31694766],
+       [ 1.28788371,  1.62049922,  1.65614445,  0.8218171 ,  0.23978736,
+        -1.53601262,  0.82928828,  0.33234628,  0.05079679,  0.89984695],
+       [-0.94398478, -0.63923543,  0.29805187,  0.09317771,  0.99368787,
+        -1.05850182, -2.0664041 , -0.33478335,  0.2436032 ,  2.23036506],
+       [-0.56912503, -0.02379822, -0.79355072,  0.13847508,  0.6246829 ,
+        -1.29298248, -0.72513038,  0.22262808, -2.60193517,  0.39712555],
+       [ 0.31502459, -0.00715841, -1.05666031,  0.51339775,  0.10108334,
+        -0.18786572,  0.92214912,  1.87581704,  0.44596211,  0.32171026],
+       [-1.05037746, -2.12272089,  0.68360326, -0.20849123, -0.56509515,
+         1.53543781,  0.9761528 ,  0.86647268,  0.17537769, -0.22335242],
+       [-0.74091603, -0.96443297,  2.61791442,  0.69626782, -1.12041336,
+         1.53308149, -2.47671792,  0.78121506,  1.47757334,  0.20595855],
+       [-0.65935648,  0.17964917, -2.25858313, -1.41300853, -0.91586181,
+        -0.23451315,  0.37269398, -1.90074103,  1.00578038,  0.17041562],
+       [-1.25371377, -1.16508746, -1.69654309, -1.43783792,  0.63299341,
+        -1.662901  , -0.40147154,  0.00694847, -0.40408588,  0.10202011],
+       [ 0.4701976 ,  0.77524024,  0.18218596,  1.33997103,  0.00979764,
+         1.10949467,  1.21646542,  1.34010374,  1.80792296,  0.87354297]]
+        # use np.random.randn(10, 10).
+    onehot = get_one_hot(agent, 10)
+    embed = np.matmul(onehot, mapp)
+    return embed
 
 def to_tensor_long(numpy_array):
     if torch.cuda.is_available():
@@ -18,15 +56,12 @@ def to_tensor(numpy_array):
     return variable
 
 
-def get_action(mu, std, actionType):
-    # get the specific action out of a probability distribution.
-    # mu: 2d tensor.
-    if actionType == 'continuous':
-        action = torch.normal(mu, std)
-    elif actionType == 'discrete':
-        action = torch.distributions.bernoulli.Bernoulli(mu).sample()
-    action = action.cpu().data.numpy()
-    return action
+def get_action(netOutput):
+    action = torch.multinomial(netOutput[1], 1).cpu().data.numpy()
+    moveX = torch.multinomial(netOutput[2], 1).cpu().data.numpy()
+    moveY = torch.multinomial(netOutput[3], 1).cpu().data.numpy()
+    target = torch.multinomial(netOutput[4], 1).cpu().data.numpy()
+    return (action, moveX, moveY, target)
 
 
 def log_density(x, mu, std, logstd, args):

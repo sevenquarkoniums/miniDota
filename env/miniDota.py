@@ -3,34 +3,54 @@ miniDota environment.
 '''
 import numpy as np
 import sys
-
-def check(var):
-    print(var)
-    i = input()
-    if i == 'q':
-        sys.exit()
+from utils.utils import check, unitEmbed
+from random import sample
 
 class miniDotaEnv:
-    def __init__(self, args, num_agent):
-        self.xlimit, self.ylimit = 50, 50
-        self.baseX, self.baseY = 30, 30
-        self.maxTime = 250
-        self.enemyBaseHealthInit = 100
+    def __init__(self, args, numAgent):
+        self.xlimit, self.ylimit = 200, 200
+        self.team1Fountain, self.team2Fountain = (0, 0), (self.xlimit, self.ylimit)
+        self.team1Base, self.team2Base = (20, 20), (self.xlimit-20, self.ylimit-20)
+        self.maxTime = 2000
+        self.baseHealthInit = 1000
+        self.agentHealthInit = [600, 800, 1000, 1200, 1400, 1200, 1000, 800, 600, 400]
+        self.agentAttack = [20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
+        self.agentRange = [20, 18, 16, 14, 12, 10, 7, 5, 3, 1]
         self.args = args
-        self.num_agent = num_agent
+        self.numAgent = numAgent
+        self.embed = {}
+        for agent in range(numAgent):
+            self.embed[agent] = unitEmbed(agent)
         self.reset()
     
     def reset(self):
-        self.stateArray = np.zeros((self.num_agent, 3))
+        self.state = np.zeros((self.numAgent+2, 4))
             # each row for an agent; each column for an attribute.
-            # col-0: posX, col-1: posY, col-2:enemyBaseHealth, 
-        self.stateArray[:, 2] = [self.enemyBaseHealthInit] * self.num_agent
-        self.done = np.zeros(self.num_agent).astype(bool)
-        self.prevDone = np.zeros(self.num_agent).astype(bool)
+            # row idx is the agent type.
+            # columns. 0:team, 1:x, 2:y, 3:health
+        team2 = sample(range(10))
+        for idx in team2:
+            self.state[idx, 0] = 1
+            self.state[idx, 1] = self.xlimit
+            self.state[idx, 2] = self.ylimit
+        self.state[11, 0] = 1
+        self.state[10:, 3] = [self.baseHealthInit] * 2
+        self.state[:10, 3] = self.agentHealthInit
+        self.done = False
+        self.prevDone = False
         self.timestamp = 0
-        return {'observations':self.stateArray.copy(), 'rewards':np.zeros(self.num_agent).copy(), 
+        observations = {}
+        for agent in range(self.numAgent):
+            thisObs = [self.embed(agent)]
+            for obsAgent in range(10):
+                state = np.array([self.state[obsAgent, 0], self.state[obsAgent, 3]/1000, self.agentAttack[obsAgent]/100, 
+                    self.agentRange[obsAgent]/10, distance/100, self.state[obsAgent, 1]/100, self.state[obsAgent, 2]/100])
+                thisObs.append( np.concatenate([self.embed(obsAgent), state], axis=1) )
+            # add base.
+            observations[agent] = np.concatenate(thisObs, axis=1)
+        return {'observations':observations, 'rewards':np.zeros(self.numAgent).copy(), 
                 'local_done':self.done.copy()}
-    
+
     def step(self, action):
         prevDist = self.__dist__() # return a 1-d array.
         
@@ -47,8 +67,8 @@ class miniDotaEnv:
         elif self.args.actionType == 'discrete':
             left, right, down, up = action[:, 0], action[:, 1], action[:, 2], action[:, 3]
             attack = action[:, 4]
-            self.stateArray[:, 0] = np.minimum(np.maximum(self.stateArray[:, 0] + right - left, 0), self.xlimit)
-            self.stateArray[:, 1] = np.minimum(np.maximum(self.stateArray[:, 1] + up - down, 0), self.xlimit)
+            self.state[:, 0] = np.minimum(np.maximum(self.state[:, 0] + right - left, 0), self.xlimit)
+            self.state[:, 1] = np.minimum(np.maximum(self.state[:, 1] + up - down, 0), self.xlimit)
 #            if left and not right and self.posX > 0:
 #                self.posX -= 1
 #            if right and not left and self.posX < self.xlimit:
@@ -61,8 +81,8 @@ class miniDotaEnv:
 #        newDist = self.__dist__()
         
         hitpoint = np.logical_and(np.logical_and(np.less_equal(prevDist, 5), attack), ~self.done).astype(int)
-        self.stateArray[:, 2] = self.stateArray[:, 2] - hitpoint # enemy base health.
-        self.done = np.less_equal(self.stateArray[:, 2], 0)
+        self.state[:, 2] = self.state[:, 2] - hitpoint # enemy base health.
+        self.done = np.less_equal(self.state[:, 2], 0)
         self.defeat = np.logical_and(self.done, ~self.prevDone)
         self.prevDone = self.done
 #        consumption = np.logical_and(np.logical_or(np.greater(prevDist, 5), self.done), attack).astype(int)
@@ -85,7 +105,7 @@ class miniDotaEnv:
         attackReward = hitpoint
         rewards = 1*attackReward + 100*self.defeat.astype(int)
 #        rewards = 0.1*distReward + 10*attackReward - 0.1*consumption + 1000*self.defeat.astype(int)
-        return {'observations':self.stateArray.copy(), 
+        return {'observations':self.state.copy(), 
                 'rewards':rewards.copy(), 'local_done':self.done.copy()}
                 # copy() needed to prevent these value from being changed by processing.
     
@@ -93,5 +113,5 @@ class miniDotaEnv:
         pass
 
     def __dist__(self):
-         return np.sqrt((self.stateArray[:,0]-self.baseX*np.ones(self.num_agent))**2 + \
-                          (self.stateArray[:,1]-self.baseY*np.ones(self.num_agent))**2)
+         return np.sqrt((self.state[:,0]-self.baseX*np.ones(self.numAgent))**2 + \
+                          (self.state[:,1]-self.baseY*np.ones(self.numAgent))**2)

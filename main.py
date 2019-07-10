@@ -10,7 +10,7 @@ import torch
 import argparse
 import numpy as np
 import torch.optim as optim
-from model import Actor, Critic
+from model import ac
 from utils.utils import to_tensor, get_action, save_checkpoint
 from utils.running_state import ZFilter
 from utils.memory import Memory
@@ -18,6 +18,10 @@ from agent.ppo import process_memory, train_model
 from env.miniDota import miniDotaEnv
 import matplotlib.pyplot as plt
 import sys
+from utils.utils import check
+import random
+random.seed(1)
+torch.manual_seed(1)
 
 parser = argparse.ArgumentParser(description='Setting for agent')
 parser.add_argument('--load_model', type=str, default=None)
@@ -84,8 +88,8 @@ def check(var):
         sys.exit()
 
 def main():
-#    train()
-    behavior()
+    train()
+    #behavior()
     
 def behavior():
     '''
@@ -137,44 +141,40 @@ def behavior():
             plt.close()
 
 def train():
-    torch.manual_seed(1)
 
-    num_inputs = 3
-    num_actions = 5
-    num_agent = 10 # multiple agents are running synchronously.
+    num_inputs = 10+17*10
+    num_actions = 15
+    numAgent = 10 # multiple agents are running synchronously.
+        # each agent has a different type with different properties.
+    numGame = 8 # multiple games running simultaneously.
     print('state size:', num_inputs)
     print('action size:', num_actions)
-    print('agent count:', num_agent)
+    print('agent count:', numAgent)
+    print('game num:', numGame)
     
-    env = miniDotaEnv(args, num_agent)
-    env_info = env.reset()
-
-    # ZFilter handles a running average of states.
-    running_state = ZFilter((num_agent,num_inputs), clip=5)
+    env = {}
+    for game in range(numGame):
+        env[game] = miniDotaEnv(args, numAgent)
 
     # initialize the neural networks.
-    actor = Actor(num_inputs, num_actions, args).to(device)
-    critic = Critic(num_inputs, args).to(device)
+    # use a single network to share the knowledge.
+    net = ac(num_inputs, num_actions, args).to(device)
     if torch.cuda.is_available():
-        actor = actor.cuda()
-        critic = critic.cuda()
+        net = net.cuda()
 
     if args.load_model is not None:
+        raise NotImplementedError
         saved_ckpt_path = os.path.join(os.getcwd(), 'save_model', str(args.load_model))
         ckpt = torch.load(saved_ckpt_path)
 
         actor.load_state_dict(ckpt['actor'])
         critic.load_state_dict(ckpt['critic'])
 
-        running_state.rs.n = ckpt['z_filter_n']
-        running_state.rs.mean = ckpt['z_filter_m']
-        running_state.rs.sum_square = ckpt['z_filter_s']
-
-        print("Loaded OK ex. Zfilter N {}".format(running_state.rs.n))
-
-    states = running_state(env_info['observations']) # get initial state.
-        # states: 2d tensor.
-        # the running_state() will normalize the input.
+    states = {}
+    for game in range(numGame):
+        states[game] = env[game].reset()['observations']
+            # get initial state.
+            # states: 2d tensor.
 
     actor_optim = optim.Adam(actor.parameters(), lr=args.actor_lr)
     critic_optim = optim.Adam(critic.parameters(), lr=args.critic_lr,
@@ -187,59 +187,59 @@ def train():
         if iter == 0:
             print('Start iterations..')
         actor.eval(), critic.eval()
-        memory = [Memory() for _ in range(num_agent)]
+        memory = [Memory() for _ in range(numAgent)]
             # memory is cleared at every iter so only the current iteration's sample are used in training.
+            # the separation of memory into agents seems unnecessary, as they are finally combined.
 
         steps = 0
         score = 0
-        record = [np.array([0,0,100,0,0])] # record states for drawing.
+        record = []
         
-#        lastDones = np.zeros(num_agent).astype(bool)
-        while steps <= args.time_horizon: # loop for one round of game.
+#        lastDones = np.zeros(numAgent).astype(bool)
+        while steps <= args.time_horizon: # loop for one round of games.
             steps += 1
-            if args.actionType == 'continuous':
-                mu, std, _ = actor(to_tensor(states)) # get action probability from the actor network.
-                actions = get_action(mu, std, args.actionType) # get certain action from probability.
-            elif args.actionType == 'discrete':
-                mu = actor(to_tensor(states))
-                actions = get_action(mu, None, args.actionType)
+            stateList = []
+            for game in range(numGame):
+                stateList.append(states[game])
+            stateCombined = np.concatenate(stateList, axis=0)
+            mu = actor(to_tensor(stateCombined))
+            actions = get_action(mu, None, args.actionType)
 
-            env_info = env.step(actions) # environment runs one step given the action.
-            next_states = running_state(env_info['observations'])
-                # get the next state.
-                # running_state normalizes the input.
-            record.append(np.concatenate([env_info['observations'][0], np.array([actions[0, 0]]), np.array([actions[0, 4]])], axis=0))
-            rewards = env_info['rewards']
-#            dones = env_info['local_done']
+            for game in range(numGame):
+                thisGameAction = actions[10*game:10*game+10, :] # contain actions from all agents.
+                envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
+                nextState = envInfo['observations']
+                    # get the next state.
+                if game == 0:
+                    record.append( np.concatenate([ envInfo['observations'][0], actions[0] ], axis=0) )
+                rewards = envInfo['rewards']
+    #            dones = envInfo['local_done']
 
-#            masks = list(~(np.array(dones))) # cut the return calculation at the done point.
-            masks = [True] * num_agent
+    #            masks = list(~(np.array(dones))) # cut the return calculation at the done point.
+                masks = [True] * numAgent
 
-            for i in range(num_agent):
-                memory[i].push(states[i], actions[i], rewards[i], masks[i])
+                for i in range(numAgent):
+                    memory[i].push(states[game][i], thisGameAction[i], rewards[i], masks[i])
 
-            score += rewards[0] # only for one agent.
-            states = next_states
+                score += np.sum(rewards)
+                states[game] = nextState
 
-#            if (dones[0] and not lastDones[0]) or steps == args.time_horizon:
-            if steps == args.time_horizon:
-                scores.append(score)
-                score = 0
-                episodes = len(scores)
-                if episodes % 10 == 0:
-                    score_avg = np.mean(scores[-min(10, episodes):])
-                    print('{}-th episode : last 10 episode mean score of 1st agent is {:.2f}'.format(
-                        episodes, score_avg))
-                draw(record, 30, 30, iter)
-                env.reset()
+    #            if (dones[0] and not lastDones[0]) or steps == args.time_horizon:
+                if steps == args.time_horizon:# currently env doesn't end in itself.
+                    env[game].reset()
+                    scores.append(score)
+                    if game == numGame - 1:
+                        score = 0 # reset score.
+                        print('Avg game and avg agent score for this iteration: %f' % np.mean(scores))
+                        #draw(record, 30, 30, iter)
             
-#            lastDones = dones.copy()
+    #            lastDones = dones.copy()
 
-        actor.train(), critic.train() # change to training mode.
+        actor.train(), critic.train() # switch to training mode.
 
         sts, ats, returns, advants, old_policy, old_value = [], [], [], [], [], []
 
-        for i in range(num_agent):
+        for i in range(numAgent):
             batch = memory[i].sample()
             st, at, rt, adv, old_p, old_v = process_memory(actor, critic, batch, args)
             sts.append(st)
@@ -260,7 +260,7 @@ def train():
                     old_policy, old_value, args)
             # training is based on the state-action pairs from the current iteration.
 
-        if iter % 100:
+        if iter % 20:
             score_avg = int(score_avg)
 
             model_path = os.path.join(os.getcwd(),'save_model')
@@ -272,14 +272,9 @@ def train():
             save_checkpoint({
                 'actor': actor.state_dict(),
                 'critic': critic.state_dict(),
-                'z_filter_n':running_state.rs.n,
-                'z_filter_m': running_state.rs.mean,
-                'z_filter_s': running_state.rs.sum_square,
                 'args': args,
                 'score': score_avg
             }, filename=ckpt_path)
-
-    env.close()
 
 if __name__ == "__main__":
     main()

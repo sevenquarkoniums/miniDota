@@ -3,62 +3,47 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class Actor(nn.Module):
+class ac(nn.Module):
     def __init__(self, num_inputs, num_outputs, args):
         self.args = args
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
-        super(Actor, self).__init__()
-        self.fc1 = nn.Linear(num_inputs, args.hidden_size)
-        self.fc2 = nn.Linear(args.hidden_size, args.hidden_size)
-        self.fc3 = nn.Linear(args.hidden_size, args.hidden_size)
-        self.fc4 = nn.Linear(args.hidden_size, num_outputs)
-        # scale the initial weights.
-#        self.fc4.weight.data.mul_(1)
-#        self.fc4.bias.data.mul_(0)
+        super(ac, self).__init__()
+        self.fc1 = nn.Linear(17, 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fcAlly = nn.Linear(64, 32)
+        self.fcAllyNone = nn.Linear(64, 32)
+        self.fcEnemy = nn.Linear(64, 32)
+        self.fcEnemyNone = nn.Linear(64, 32)
+        self.fcLarge1 = nn.Linear(394, 512)
+        self.fcLarge2 = nn.Linear(512, 512)
+        self.fcValue = nn.Linear(512, 1)
+        self.fcAction = nn.Linear(512, 3)
+        self.fcX = nn.Linear(512, 3)
+        self.fcY = nn.Linear(512, 3)
+        self.fcTarget = nn.Linear(512, 6)
 
     def forward(self, x):
-        if self.args.activation == 'tanh':
-            x = torch.tanh(self.fc1(x))
-            x = torch.tanh(self.fc2(x))
-            x = torch.tanh(self.fc3(x))
-            mu = self.fc4(x)
-        elif self.args.activation == 'relu':
-            x = F.relu(self.fc1(x))
-            x = F.relu(self.fc2(x))
-            x = F.relu(self.fc3(x))
-            mu = self.fc4(x)
-        elif self.args.activation == 'swish':
-            x = self.fc1(x)
-            x = x * torch.sigmoid(x)
-            x = self.fc2(x)
-            x = x * torch.sigmoid(x)
-            x = self.fc3(x)
-            x = x * torch.sigmoid(x)
-            mu = self.fc4(x)
-        else:
-            raise ValueError
-        if self.args.actionType == 'continuous':
-            logstd = torch.zeros_like(mu)
-            std = torch.exp(logstd)
-            return mu, std, logstd # std is always 1.
-        elif self.args.actionType == 'discrete':
-            mu = torch.tanh(mu) / 2 * (1 - 2 * self.args.randomActionRatio) + 1 / 2
-                # each item is within (randomActionRatio, 1 - randomActionRatio).
-            return mu
+        stateEncode = []
+        player = x[:, :10]
+        stateEncode.append(player)
+        for ally in range(5):
+            allyOut = F.relu(self.fcAlly(F.relu(self.fc2(F.relu(self.fc1(x[:, 10+17*ally:10+17*(ally+1)]))))))
+            stateEncode.append(allyOut)
+        stateEncode.append(F.relu(self.fcAllyNone(F.relu(self.fc2(F.relu(self.fc1(x[:, 10+17*5:10+17*6])))))))
+        for enemy in range(5):
+            enemyOut = F.relu(self.fcEnemy(F.relu(self.fc2(F.relu(self.fc1(x[:, 10+17*(enemy+6):10+17*(enemy+7)]))))))
+            stateEncode.append(enemyOut)
+        stateEncode.append(F.relu(self.fcEnemyNone(F.relu(self.fc2(F.relu(self.fc1(x[:, 10+17*11:])))))))
+        s = torch.cat(stateEncode, dim=1)
 
+        insight = F.relu(self.fcLarge2(F.relu(self.fcLarge1(s))))
 
-class Critic(nn.Module):
-    def __init__(self, num_inputs, args):
-        super(Critic, self).__init__()
-        self.fc1 = nn.Linear(num_inputs, args.hidden_size)
-        self.fc2 = nn.Linear(args.hidden_size, args.hidden_size)
-        self.fc3 = nn.Linear(args.hidden_size, 1)
-#        self.fc3.weight.data.mul_(0.1)
-#        self.fc3.bias.data.mul_(0.0)
+        value = self.fcValue(insight)
+        action = nn.softmax(dim=0)(self.fcAction(insight))
+        moveX = nn.softmax(dim=0)(self.fcX(insight))
+        moveY = nn.softmax(dim=0)(self.fcY(insight))
+        target = nn.softmax(dim=0)(self.fcTarget(insight))
 
-    def forward(self, x):
-        x = torch.tanh(self.fc1(x))
-        x = torch.tanh(self.fc2(x))
-        v = self.fc3(x)
-        return v
+        return (value, action, moveX, moveY, target)
+
