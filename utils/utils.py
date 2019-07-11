@@ -66,17 +66,20 @@ def get_action(netOutput):
     return np.concatenate([action, moveX, moveY, target], axis=1)
 
 
-def log_density(x, mu, std, logstd, args):
-    # x: the actual action; 2d tensor.
-    if args.actionType == 'continuous':
-        # the probability of x ~ Norm(mu, std).
-        var = std.pow(2)
-        log_density = -(x - mu).pow(2) / (2 * var) \
-                      - 0.5 * math.log(2 * math.pi) - logstd
-    elif args.actionType == 'discrete':
-        # the probability of x ~ Bernoulli(mu).
-        log_density = x * mu + (1-x) * (1-mu)
-    return log_density.sum(1, keepdim=True) # why sum?
+def log_density(actions, policyDistr):
+    # returns the log probability of actions ~ multinomial(policyDistr).
+    # actions: a 2d tensor with 4 cols.
+    # policyDistr: a 4-tuple, each is a 2d tensor.
+    action = torch.nn.functional.one_hot(actions[:,0], 3)
+    moveX = torch.nn.functional.one_hot(actions[:,1], 3)
+    moveY = torch.nn.functional.one_hot(actions[:,2], 3)
+    target = torch.nn.functional.one_hot(actions[:,3], 12)
+    prob = torch.sum(action * policyDistr[1], dim=1, keepdim=True) * \
+           torch.sum(moveX  * policyDistr[2], dim=1, keepdim=True) * \
+           torch.sum(moveY  * policyDistr[3], dim=1, keepdim=True) * \
+           torch.sum(target * policyDistr[4], dim=1, keepdim=True)
+    log_density = torch.log(prob)
+    return log_density
 
 
 def flat_grad(grads):

@@ -40,23 +40,18 @@ def surrogate_loss(actor, advants, states, old_policy, actions, index, args):
     return surrogate, ratio
 
 
-def process_memory(actor, critic, batch, args):
+def process_memory(net, batch, args):
     states = to_tensor(batch.state)
     actions = to_tensor(batch.action)
     rewards = to_tensor(batch.reward)
     masks = to_tensor(batch.mask)
-    values = critic(states)
 
-    # ----------------------------
-    # step 1: get returns and GAEs and log probability of old policy
-    returns, advants = get_gae(rewards, masks, values, args)
-    if args.actionType == 'continuous':
-        mu, std, logstd = actor(states)
-        old_policy = log_density(actions, mu, std, logstd, args)
-    elif args.actionType == 'discrete':
-        mu = actor(states)
-        old_policy = log_density(actions, mu, None, None, args)
+    netOutput = net(states)# (value, action, moveX, moveY, target)
+    values = netOutput[0]
+
+    old_policy = log_density(actions, netOutput)
     old_values = values.clone()
+    returns, advants = get_gae(rewards, masks, values, args)
 
     return states, actions, returns, advants, old_policy, old_values
 
@@ -67,8 +62,6 @@ def train_model(actor, critic, actor_optim, critic_optim, states, actions,
     n = len(states)
     arr = np.arange(n)
 
-    # ----------------------------
-    # step 2: get value loss and actor loss and update actor & critic
     for epoch in range(3):# iterations of training on these data.
 #        print('epoch is ' + str(epoch))
         np.random.shuffle(arr)
