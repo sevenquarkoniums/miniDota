@@ -160,15 +160,14 @@ def train():
         ckpt = torch.load(saved_ckpt_path)
         net.load_state_dict(ckpt['net'])
 
-    observations, alive = {}, {}
+    observations = {}
+#    observations, alive = {}, {}
     for game in range(numGame):
-        observations[game], alive[game] = env[game].reset()['observations']
+        observations[game] = env[game].reset()['observations']
+#        observations[game], alive[game] = env[game].reset()['observations']
             # get initial state.
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
-
-    scores = []
-    score_avg = 0
 
     for iteration in range(args.max_iter):
         if iteration == 0:
@@ -179,11 +178,14 @@ def train():
             # the separation of memory into agents seems unnecessary, as they are finally combined.
 
         steps = 0
-        score = 0
+        teamscore = 0 # only for game 0.
         record = []
+        gameEnd = np.zeros(numGame).astype(bool)
         
 #        lastDones = np.zeros(numAgent).astype(bool)
         while steps <= args.time_horizon: # loop for one round of games.
+            if np.all(gameEnd):
+                break
             steps += 1
             stateList = []
             for game in range(numGame):
@@ -193,36 +195,36 @@ def train():
             actions = get_action(actionDistr)
 
             for game in range(numGame):
-                thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
-                envInfo, nextAlive = env[game].step(thisGameAction) # environment runs one step given the action.
-                nextObs = envInfo['observations']
-                    # get the next state.
-                if game == 0:
-                    record.append( np.concatenate([ envInfo['observations'][0], actions[0] ], axis=0) )
-                rewards = envInfo['rewards']
-    #            dones = envInfo['local_done']
-
-    #            masks = list(~(np.array(dones))) # cut the return calculation at the done point.
-                masks = [True] * numAgent
-
-                for i in range(numAgent):
-                    if alive[game][i]:
+                if not gameEnd[game]:
+                    thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
+                    envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
+    #                envInfo, nextAlive = env[game].step(thisGameAction) # environment runs one step given the action.
+                    nextObs = envInfo['observations'] # get the next state.
+                    if game == 0:
+                        record.append( np.concatenate([ env[game].getState(), actions[0:10, :].reshape(-1) ]) )
+                    rewards = envInfo['rewards']
+                    dones = envInfo['local_done']
+                    masks = list(~dones) # cut the return calculation at the done point.
+    
+                    for i in range(numAgent):
+    #                    if alive[game][i]:
                         memory[i].push(observations[game][i], thisGameAction[i], rewards[i], masks[i])
-
-                score += np.sum(rewards)
-                observations[game] = nextObs
-                alive[game] = nextAlive
-
-    #            if (dones[0] and not lastDones[0]) or steps == args.time_horizon:
-                if steps == args.time_horizon:# currently env doesn't end in itself.
-                    env[game].reset()
-                    scores.append(score)
-                    if game == numGame - 1:
-                        score = 0 # reset score.
-                        print('Avg game and avg agent score for this iteration: %f' % np.mean(scores))
-                        #draw(record, 30, 30, iter)
-            
-    #            lastDones = dones.copy()
+    
+                    if game == 0:
+                        teamscore += sum([rewards[x] for x in env[game].getTeam0()])
+                    assert np.sum(rewards) == 0
+                    observations[game] = nextObs
+    #                alive[game] = nextAlive
+    
+        #            if (dones[0] and not lastDones[0]) or steps == args.time_horizon:
+                    gameEnd[game] = np.all(dones)
+                    if gameEnd:
+                        env[game].reset()
+                        if game == 0:
+                            print('Game 0 score: %f' % teamscore)
+                            #draw(record, 30, 30, iter)
+                
+        #            lastDones = dones.copy()
 
         net.train() # switch to training mode.
 
@@ -230,7 +232,7 @@ def train():
 
         for i in range(numAgent):
             batch = memory[i].sample()
-            st, at, rt, adv, old_p, old_v = process_memory(actor, critic, batch, args)
+            st, at, rt, adv, old_p, old_v = process_memory(net, batch, args)
             sts.append(st)
             ats.append(at)
             returns.append(rt)
@@ -249,19 +251,17 @@ def train():
                     old_policy, old_value, args)
             # training is based on the state-action pairs from the current iteration.
 
-        if iteration % 20:
-            score_avg = int(score_avg)
-
+        if iteration % 10:
             model_path = os.path.join(os.getcwd(),'save_model')
             if not os.path.isdir(model_path):
                 os.makedirs(model_path)
 
-            ckpt_path = os.path.join(model_path, 'ckpt_'+ str(score_avg)+'.pth.tar')
+            ckpt_path = os.path.join(model_path, 'ckpt_'+ str(teamscore)+'.pth.tar')
 
             save_checkpoint({
                 'net': net.state_dict(),
                 'args': args,
-                'score': score_avg
+                'score': teamscore
             }, filename=ckpt_path)
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@
 miniDota environment.
 '''
 import numpy as np
-import sys
 from utils.utils import check, unitEmbed
 from random import sample
 from scipy.spatial.distance import cdist
@@ -44,12 +43,16 @@ class miniDotaEnv:
         self.timestamp = 0
         self.distance = cdist(self.state[:, 1:3], self.state[:, 1:3])
         self.genObs()
-        alive = (self.state[:10,3] > 0)
+#        alive = (self.state[:10,3] > 0)
         return {'observations':self.observations, 'rewards':np.zeros(self.numAgent), 
-                'local_done':self.done}, alive
+                'local_done':np.array([False]*10)
+                }
 
     def getState(self):
         return self.state.reshape(-1)
+    
+    def getTeam0(self):
+        return self.team0
 
     def genObs(self):
         '''
@@ -88,7 +91,7 @@ class miniDotaEnv:
                         # this implementation requires the agents to remember the correlation between agentType and their embeddings.
                         if self.distance[agent, target] <= self.unitRange[agent] and self.state[target, 3] > 0:
                             # within range and alive.
-                            harm = min(self.unitAttack[agent], self.state[targetLabel, 3])
+                            harm = min(self.unitAttack[agent], self.state[target, 3])
                             self.state[target, 3] -= harm
                             self.interaction[agent, target] = 1
                             self.interaction[target, agent] = -1
@@ -103,12 +106,6 @@ class miniDotaEnv:
                     self.state[agent, 2] = min(self.ylimit, max(0, self.state[agent,2] + offsetY))
 
         win = [0] * 10
-        if self.state[10, 3] <= 0:
-            win = [0,0,0,0,0,1,1,1,1,1]
-            self.done = True
-        if self.state[11, 3] <= 0:
-            win = [1,1,1,1,1,0,0,0,0,0]
-            self.done = True
         if self.state[10, 3] <= 0 and self.state[11, 3] <= 0:
             win = [1]*10
             self.done = True
@@ -130,12 +127,16 @@ class miniDotaEnv:
             rewards.append(reward)
         rewards = np.array(rewards)
         team0mean = np.dot(1-self.state[:,0], rewards) / 5
-        tema1mean = np.dot(self.state[:,0], rewards) / 5
+        team1mean = np.dot(self.state[:,0], rewards) / 5
         meanVec = (1-self.state[:,0])*team1mean + self.state[:,0]*team0mean
         rewards -= meanVec # make the game zero-sum by minus the opponent's average.
-        alive = (self.state[:10,3] > 0)
-        
+        dead = (self.state[:10,3] <= 0)
+        if self.done:
+            local_done = np.array([True] * 10)
+        else:
+            local_done = dead
         return {'observations':self.observations, 
-                'rewards':rewards, 'local_done':self.done}, alive
+                'rewards':rewards, 'local_done':local_done
+                }
                 # copy() needed to prevent these value from being changed by processing.
 
