@@ -1,5 +1,6 @@
 import torch
 import math
+import numpy as np
 
 def check(var):
     print(var)
@@ -10,9 +11,9 @@ def check(var):
     except KeyboardInterrupt:
         sys.exit()
 
-def get_one_hot(targets, nb_classes):
-    res = np.eye(nb_classes)[np.array(targets).reshape(-1)]
-    return res.reshape(list(targets.shape)+[nb_classes])
+def get_one_hot(target, nb_classes):
+    res = np.eye(nb_classes)[np.array(target)]
+    return res
 
 def unitEmbed(agent):
     mapp = [[ 0.8789365 , -1.46669075, -0.8060484 , -0.00359309,  0.68484395,
@@ -35,10 +36,10 @@ def unitEmbed(agent):
         -1.662901  , -0.40147154,  0.00694847, -0.40408588,  0.10202011],
        [ 0.4701976 ,  0.77524024,  0.18218596,  1.33997103,  0.00979764,
          1.10949467,  1.21646542,  1.34010374,  1.80792296,  0.87354297]]
-        # use np.random.randn(10, 10).
+        # from np.random.randn(10, 10).
     onehot = get_one_hot(agent, 10)
     embed = np.matmul(onehot, mapp)
-    return embed
+    return embed # 10-unit row vector.
 
 def to_tensor_long(numpy_array):
     if torch.cuda.is_available():
@@ -61,7 +62,7 @@ def get_action(netOutput):
     moveX = torch.multinomial(netOutput[2], 1).cpu().data.numpy()
     moveY = torch.multinomial(netOutput[3], 1).cpu().data.numpy()
     target = torch.multinomial(netOutput[4], 1).cpu().data.numpy()
-    return (action, moveX, moveY, target)
+    return np.concatenate([action, moveX, moveY, target], axis=1)
 
 
 def log_density(x, mu, std, logstd, args):
