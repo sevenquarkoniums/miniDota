@@ -38,7 +38,7 @@ def log_density(x, mu, std, logstd, args):
                       - 0.5 * math.log(2 * math.pi) - logstd
     elif args.actionType == 'discrete':
         # the probability of x ~ Bernoulli(mu).
-        log_density = x * mu + (1-x) * (1-mu)
+        log_density = torch.log(x * mu + (1-x) * (1-mu))
     return log_density.sum(1, keepdim=True) # why sum?
 
 
