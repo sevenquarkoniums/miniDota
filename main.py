@@ -19,7 +19,6 @@ from utils.memory import Memory
 from agent.ppo import process_memory, train_model
 from env.miniDota import miniDotaEnv
 import matplotlib.pyplot as plt
-import sys
 from utils.utils import check
 import random
 random.seed(1)
@@ -77,12 +76,6 @@ def draw(record, baseX, baseY, iteration):
     plt.tight_layout()
     plt.savefig('output/iter-%d.png' % iteration)
     plt.close()
-
-def check(var):
-    print(var)
-    i = input()
-    if i == 'q':
-        sys.exit()
 
 def main():
     train()
@@ -173,9 +166,11 @@ def train():
         if iteration == 0:
             print('Start iteration 0 ..')
         net.eval()
-        memory = [Memory() for _ in range(numAgent)]
-            # memory is cleared at every iter so only the current iteration's sample are used in training.
-            # the separation of memory into agents seems unnecessary, as they are finally combined.
+        memory = []
+        for i in range(numGame):
+            memory.append( [Memory() for j in range(numAgent)] )
+                # memory is cleared at every iter so only the current iteration's sample are used in training.
+                # the separation of memory is needed as they need to be processed individually for each episode of game.
 
         steps = 0
         teamscore = 0 # only for game 0.
@@ -189,7 +184,8 @@ def train():
             steps += 1
             stateList = []
             for game in range(numGame):
-                stateList.append(np.expand_dims(observations[game], axis=0))
+                for agent in range(numAgent):
+                    stateList.append(np.expand_dims(observations[game][agent], axis=0))
             stateCombined = np.concatenate(stateList, axis=0) # each env is one row.
             actionDistr = net(to_tensor(stateCombined)) # calculate all envs together.
             actions = get_action(actionDistr)
@@ -204,11 +200,12 @@ def train():
                         record.append( np.concatenate([ env[game].getState(), actions[0:10, :].reshape(-1) ]) )
                     rewards = envInfo['rewards']
                     dones = envInfo['local_done']
-                    masks = list(~dones) # cut the return calculation at the done point.
+#                    masks = list(~dones) # cut the return calculation at the done point.
+                    masks = [True] * numAgent # no need to mask out the last state-action pair.
     
                     for i in range(numAgent):
     #                    if alive[game][i]:
-                        memory[i].push(observations[game][i], thisGameAction[i], rewards[i], masks[i])
+                        memory[game][i].push(observations[game][i], thisGameAction[i], rewards[i], masks[i])
     
                     if game == 0:
                         teamscore += sum([rewards[x] for x in env[game].getTeam0()])
@@ -218,7 +215,7 @@ def train():
     
         #            if (dones[0] and not lastDones[0]) or steps == args.time_horizon:
                     gameEnd[game] = np.all(dones)
-                    if gameEnd:
+                    if gameEnd[game]:
                         env[game].reset()
                         if game == 0:
                             print('Game 0 score: %f' % teamscore)
@@ -230,15 +227,16 @@ def train():
 
         sts, ats, returns, advants, old_policy, old_value = [], [], [], [], [], []
 
-        for i in range(numAgent):
-            batch = memory[i].sample()
-            st, at, rt, adv, old_p, old_v = process_memory(net, batch, args)
-            sts.append(st)
-            ats.append(at)
-            returns.append(rt)
-            advants.append(adv)
-            old_policy.append(old_p)
-            old_value.append(old_v)
+        for game in range(numGame):
+            for i in range(numAgent):
+                batch = memory[game][i].sample()
+                st, at, rt, adv, old_p, old_v = process_memory(net, batch, args)
+                sts.append(st)
+                ats.append(at)
+                returns.append(rt)
+                advants.append(adv)
+                old_policy.append(old_p)
+                old_value.append(old_v)
 
         sts = torch.cat(sts)
         ats = torch.cat(ats)

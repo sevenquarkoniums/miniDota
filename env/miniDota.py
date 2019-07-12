@@ -18,8 +18,8 @@ class miniDotaEnv:
         self.args = args
         self.numAgent = numAgent
         self.embed = {}
-        for agent in range(numAgent):
-            self.embed[agent] = unitEmbed(agent)
+        for unit in range(12):
+            self.embed[unit] = unitEmbed(unit)
         self.reset()
     
     def reset(self):
@@ -71,15 +71,15 @@ class miniDotaEnv:
             for obsAgent in order:
                 obsOne = np.array([0, self.interaction[agent, obsAgent], self.state[obsAgent, 3]/1000, self.unitAttack[obsAgent]/100, 
                     self.unitRange[obsAgent]/10, self.distance[agent, obsAgent]/100, self.state[obsAgent, 1]/100, self.state[obsAgent, 2]/100])
-                obs.append( np.concatenate([self.embed(obsAgent), obsOne]) )
-            self.observations[agent] = np.concatenate([self.embed(agent)] + obs)
+                obs.append( np.concatenate([self.embed[obsAgent], obsOne]) )
+            self.observations[agent] = np.concatenate([self.embed[agent]] + obs)
 
     def step(self, actions):
         self.distance = cdist(self.state[:, 1:3], self.state[:, 1:3])
         harms = []
         self.interaction = np.zeros((12,12)) # attacking and being attacked.
 
-        for agent in self.numAgent:
+        for agent in range(self.numAgent):
             harm = 0
             if self.state[agent, 3] > 0:# alive.
                 # add fountain regen here.
@@ -98,7 +98,7 @@ class miniDotaEnv:
             harms.append(harm)
 
         # attack is prior to move.
-        for agent in self.numAgent:
+        for agent in range(self.numAgent):
             if self.state[agent, 3] > 0:# alive.
                 actionType, offsetX, offsetY = actions[agent,0], actions[agent,1]-1, actions[agent,2]-1
                 if actionType == 1:
@@ -122,13 +122,13 @@ class miniDotaEnv:
 
         self.genObs()
         rewards = []
-        for agent in self.numAgent:
+        for agent in range(self.numAgent):
             reward = 0.001*harms[agent] + 1*win[agent]
             rewards.append(reward)
         rewards = np.array(rewards)
-        team0mean = np.dot(1-self.state[:,0], rewards) / 5
-        team1mean = np.dot(self.state[:,0], rewards) / 5
-        meanVec = (1-self.state[:,0])*team1mean + self.state[:,0]*team0mean
+        team0mean = np.dot(1-self.state[:10, 0], rewards) / 5
+        team1mean = np.dot(self.state[:10, 0], rewards) / 5
+        meanVec = (1-self.state[:10, 0])*team1mean + self.state[:10, 0]*team0mean
         rewards -= meanVec # make the game zero-sum by minus the opponent's average.
         dead = (self.state[:10,3] <= 0)
         if self.done:

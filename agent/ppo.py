@@ -1,9 +1,10 @@
 import numpy as np
 import torch
-from utils.utils import to_tensor, to_tensor_long, get_action, log_density
+from utils.utils import to_tensor, to_tensor_long, log_density
 
 
-def get_gae(rewards, masks, values, args):
+def getGA(rewards, masks, values, args):
+    # get the returns and advantages for one episode.
     returns = torch.zeros_like(rewards)
     advants = torch.zeros_like(rewards)
 
@@ -13,31 +14,26 @@ def get_gae(rewards, masks, values, args):
 
     for t in reversed(range(0, len(rewards))):
         running_returns = rewards[t] + args.gamma * running_returns * masks[t]
-        running_tderror = rewards[t] + args.gamma * previous_value * masks[t] - \
-                          values.data[t]
-        running_advants = running_tderror + args.gamma * args.lamda * \
-                          running_advants * masks[t]
+        running_tderror = rewards[t] + args.gamma * previous_value * masks[t] - values.data[t]
+        running_advants = running_tderror + args.gamma * args.lamda * running_advants * masks[t] # why?
 
         returns[t] = running_returns
         previous_value = values.data[t]
         advants[t] = running_advants
 
-    advants = (advants - advants.mean()) / advants.std()
+    advants = (advants - advants.mean()) / advants.std() # this normalization is common practice.
     return returns, advants
 
 
-def surrogate_loss(actor, advants, states, old_policy, actions, index, args):
-    if args.actionType == 'continuous':
-        mu, std, logstd = actor(states)
-        new_policy = log_density(actions, mu, std, logstd, args)
-    elif args.actionType == 'discrete':
-        mu = actor(states)
-        new_policy = log_density(actions, mu, None, None, args)
+def surrogate_loss(net, advants, states, old_policy, actions, index, args):
+    policyDistr = net(states)
+    values = policyDistr[0]
+    new_policy = log_density(actions, policyDistr)
     old_policy = old_policy[index]
 
     ratio = torch.exp(new_policy - old_policy)
     surrogate = ratio * advants
-    return surrogate, ratio
+    return surrogate, ratio, values
 
 
 def process_memory(net, batch, args):
@@ -51,19 +47,18 @@ def process_memory(net, batch, args):
 
     old_policy = log_density(actions, netOutput)
     old_values = values.clone()
-    returns, advants = get_gae(rewards, masks, values, args)
+    returns, advants = getGA(rewards, masks, values, args)
 
     return states, actions, returns, advants, old_policy, old_values
 
 
-def train_model(actor, critic, actor_optim, critic_optim, states, actions,
+def train_model(net, optimizer, states, actions,
                 returns, advants, old_policy, old_values, args):
     criterion = torch.nn.MSELoss()
     n = len(states)
     arr = np.arange(n)
 
     for epoch in range(3):# iterations of training on these data.
-#        print('epoch is ' + str(epoch))
         np.random.shuffle(arr)
 
         for i in range(n // args.batch_size):
@@ -75,15 +70,14 @@ def train_model(actor, critic, actor_optim, critic_optim, states, actions,
             actions_samples = actions[batch_index]
             oldvalue_samples = old_values[batch_index].detach()
 
-            loss, ratio = surrogate_loss(actor, advants_samples, inputs,
+            loss, ratio, values = surrogate_loss(net, advants_samples, inputs,
                                          old_policy.detach(), actions_samples,
                                          batch_index, args)
 
-            values = critic(inputs)
             clipped_values = oldvalue_samples + \
                              torch.clamp(values - oldvalue_samples,
                                          -args.clip_param,
-                                         args.clip_param)
+                                         +args.clip_param)
             critic_loss1 = criterion(clipped_values, returns_samples)
             critic_loss2 = criterion(values, returns_samples)
             critic_loss = torch.max(critic_loss1, critic_loss2).mean()
@@ -94,12 +88,8 @@ def train_model(actor, critic, actor_optim, critic_optim, states, actions,
             clipped_loss = clipped_ratio * advants_samples
             actor_loss = -torch.min(loss, clipped_loss).mean()
 
-            loss = actor_loss + 0.5 * critic_loss
+            loss = actor_loss + 0.5 * critic_loss # why 0.5?
 
-            critic_optim.zero_grad()
-            loss.backward(retain_graph=True)
-            critic_optim.step()
-
-            actor_optim.zero_grad()
+            optimizer.zero_grad()
             loss.backward()
-            actor_optim.step()
+            optimizer.step()
