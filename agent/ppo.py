@@ -15,7 +15,8 @@ def getGA(rewards, masks, values, args):
     for t in reversed(range(0, len(rewards))):
         running_returns = rewards[t] + args.gamma * running_returns * masks[t]
         running_tderror = rewards[t] + args.gamma * previous_value * masks[t] - values.data[t]
-        running_advants = running_tderror + args.gamma * args.lamda * running_advants * masks[t] # why?
+        running_advants = running_tderror + args.gamma * args.lamda * running_advants * masks[t]
+            # exactly the formula in the PPO paper.
 
         returns[t] = running_returns
         previous_value = values.data[t]
@@ -70,7 +71,7 @@ def train_model(net, optimizer, states, actions,
             actions_samples = actions[batch_index]
             oldvalue_samples = old_values[batch_index].detach()
 
-            loss, ratio, values = surrogate_loss(net, advants_samples, inputs,
+            vanillaLoss, ratio, values = surrogate_loss(net, advants_samples, inputs,
                                          old_policy.detach(), actions_samples,
                                          batch_index, args)
 
@@ -86,9 +87,10 @@ def train_model(net, optimizer, states, actions,
                                         1.0 - args.clip_param,
                                         1.0 + args.clip_param)
             clipped_loss = clipped_ratio * advants_samples
-            actor_loss = -torch.min(loss, clipped_loss).mean()
+            actor_loss = -torch.min(vanillaLoss, clipped_loss).mean()
 
-            loss = actor_loss + 0.5 * critic_loss # why 0.5?
+            loss = actor_loss + 0.5 * critic_loss
+                # 0.5 is an adjustable coefficient.
 
             optimizer.zero_grad()
             loss.backward()

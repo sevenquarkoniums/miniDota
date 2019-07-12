@@ -1,7 +1,5 @@
 '''
 To do:
-    0 change into single network.
-    1 use mask to make an end.
     2 accelerate the environment update.
     3 make the numpy calculation into pytorch.
     4 use multiprocessing for game update.
@@ -21,6 +19,9 @@ from env.miniDota import miniDotaEnv
 import matplotlib.pyplot as plt
 from utils.utils import check
 import random
+import time
+import imageio
+from scipy.spatial.distance import euclidean
 random.seed(1)
 torch.manual_seed(1)
 
@@ -34,7 +35,7 @@ parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--batch_size', type=int, default=1024)
 parser.add_argument('--max_iter', type=int, default=1000,
                     help='the number of max iteration')
-parser.add_argument('--time_horizon', type=int, default=1000,
+parser.add_argument('--time_horizon', type=int, default=10000,
                     help='the number of time horizon (step number) T ')
 parser.add_argument('--l2_rate', type=float, default=0.001,
                     help='l2 regularizer coefficient')
@@ -47,35 +48,44 @@ args = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def draw(record, baseX, baseY, iteration):
+def draw(record, iteration, unitRange):
     '''
-    Draw the action trace of an agent.
+    Draw the action trace of a game.
     '''
-    record = np.stack(record)
-    fig, ax = plt.subplots(figsize=(6,5))
-    x, y = record[:, 0].tolist(), record[:, 1].tolist()
-#    stop, attack = record[:, 3].tolist(), record[:, 4].tolist()
-    ax.plot(x, y, '-')
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_xlim(-1, 51)
-    ax.set_ylim(-1, 51)
-    ax.plot(baseX, baseY, '*r', markersize=10)
-#    attX, attY = [], []
-#    stopX, stopY = [], []
-#    for idx, a in enumerate(attack):
-#        if a == 1:
-#            attX.append(x[idx])
-#            attY.append(y[idx])
-#        if stop[idx] == 1:
-#            stopX.append(x[idx])
-#            stopY.append(y[idx])
-#    ax.plot(attX, attY, 'x', markersize=3, color='chocolate')
-#    ax.plot(stopX, stopY, 'o', markersize=3, color='forestgreen')
-    plt.title('iteration-%d' % iteration)
-    plt.tight_layout()
-    plt.savefig('output/iter-%d.png' % iteration)
-    plt.close()
+    matplotlib.rcParams.update({'font.size': 20})
+    for step in range(record.shape[0]):
+        states, actions = record[step, :4*12].reshape((12,4)), record[step, 4*12:].reshape((10,4))
+        fig, ax = plt.subplots(figsize=(11,10))
+        for player in range(10):
+            if states[player,0] == 0:
+                color = 'green'
+            elif states[player,0] == 1:
+                color = 'firebrick'
+            ax.plot(states[player,1], states[player,2], 'o', markersize=10, color=color)
+            if actions[player,0] == 2:
+                target = states[player,3]
+                if states[target,0] != states[player,0]:
+                    playerPos, targetPos = states[player,1:2], states[target,1:2]
+                    if euclidean(playerPos, targetPos) <= unitRange[player] and states[target,3] > 0:
+                        ax.plot([playerPos[0], targetPos[0]], [playerPos[1], targetPos[1]], '-', color=color)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_xlim(-1, 200)
+        ax.set_ylim(-1, 200)
+        ax.plot(20, 20, '*', markersize=10, color='green')
+        ax.plot(180, 180, '*', markersize=10, color='firebrick')
+
+        plt.title('output/iter%d-step%d' % (iteration, step))
+        plt.tight_layout()
+        plt.savefig('output/iter%d-step%d.png' % (iteration, step))
+        plt.close()
+
+    # make gif.
+    images = []
+    for istep in range(step+1):
+        filename = 'output/iter%d-step%d.png' % (iteration, istep)
+        images.append(imageio.imread(filename))
+    imageio.mimsave('output/iter%d.gif' % iteration, images)
 
 def main():
     train()
@@ -163,6 +173,7 @@ def train():
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
 
     for iteration in range(args.max_iter):
+        start = time.time()
         if iteration == 0:
             print('Start iteration 0 ..')
         net.eval()
@@ -209,20 +220,22 @@ def train():
     
                     if game == 0:
                         teamscore += sum([rewards[x] for x in env[game].getTeam0()])
-                    assert np.sum(rewards) == 0
                     observations[game] = nextObs
     #                alive[game] = nextAlive
     
         #            if (dones[0] and not lastDones[0]) or steps == args.time_horizon:
                     gameEnd[game] = np.all(dones)
                     if gameEnd[game]:
-                        env[game].reset()
+                        assert np.sum(rewards) == 0
                         if game == 0:
                             print('Game 0 score: %f' % teamscore)
-                            #draw(record, 30, 30, iter)
+                            recordMat = np.stack(record)# stack will expand the dimension before concatenate.
+                            draw(recordMat, iteration, env[game].getUnitRange())
+                        env[game].reset()
                 
         #            lastDones = dones.copy()
 
+        simEnd = time.time()
         net.train() # switch to training mode.
 
         sts, ats, returns, advants, old_policy, old_value = [], [], [], [], [], []
@@ -248,6 +261,10 @@ def train():
         train_model(net, optimizer, sts, ats, returns, advants,
                     old_policy, old_value, args)
             # training is based on the state-action pairs from the current iteration.
+
+        trainEnd = time.time()
+        print('Simulation time: %.f' % (simEnd-start))
+        print('Training time: %.f' % (trainEnd-simEnd))
 
         if iteration % 10:
             model_path = os.path.join(os.getcwd(),'save_model')

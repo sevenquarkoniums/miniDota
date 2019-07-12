@@ -15,6 +15,7 @@ class miniDotaEnv:
         self.unitHealthInit = [600, 800, 1000, 1200, 1400, 1200, 1000, 800, 600, 400, 1000, 1000]# last two are bases.
         self.unitAttack = [20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 0, 0]
         self.unitRange = [19, 17, 15, 13, 11, 9, 7, 5, 3, 1, 0, 0]
+        self.teamFactor = 0.2
         self.args = args
         self.numAgent = numAgent
         self.embed = {}
@@ -53,6 +54,9 @@ class miniDotaEnv:
     
     def getTeam0(self):
         return self.team0
+
+    def getUnitRange(self):
+        return self.unitRange
 
     def genObs(self):
         '''
@@ -121,15 +125,16 @@ class miniDotaEnv:
             self.done = True
 
         self.genObs()
-        rewards = []
+        personalRewards = []
         for agent in range(self.numAgent):
-            reward = 0.001*harms[agent] + 1*win[agent]
-            rewards.append(reward)
-        rewards = np.array(rewards)
-        team0mean = np.dot(1-self.state[:10, 0], rewards) / 5
-        team1mean = np.dot(self.state[:10, 0], rewards) / 5
-        meanVec = (1-self.state[:10, 0])*team1mean + self.state[:10, 0]*team0mean
-        rewards -= meanVec # make the game zero-sum by minus the opponent's average.
+            thisReward = 0.001*harms[agent] + 1*win[agent]
+            personalRewards.append(thisReward)
+        personalRewards = np.array(personalRewards)
+        team0mean = np.dot(1-self.state[:10, 0], personalRewards) / 5
+        team1mean = np.dot(self.state[:10, 0], personalRewards) / 5
+        teamVec = (1-self.state[:10, 0])*team0mean + self.state[:10, 0]*team1mean
+        oppoMeanVec = (1-self.state[:10, 0])*team1mean + self.state[:10, 0]*team0mean
+        rewards = (1-self.teamFactor) * personalRewards + self.teamFactor * teamVec - oppoMeanVec # make the game zero-sum by minus the opponent's average.
         dead = (self.state[:10,3] <= 0)
         if self.done:
             local_done = np.array([True] * 10)
@@ -138,5 +143,5 @@ class miniDotaEnv:
         return {'observations':self.observations, 
                 'rewards':rewards, 'local_done':local_done
                 }
-                # copy() needed to prevent these value from being changed by processing.
+                # copy() may be needed to prevent these value from being changed by processing.
 
