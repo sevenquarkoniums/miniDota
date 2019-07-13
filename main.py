@@ -33,7 +33,7 @@ parser.add_argument('--hidden_size', type=int, default=512,
                     help='hidden unit size of actor and critic networks')
 parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--batch_size', type=int, default=1024)
-parser.add_argument('--max_iter', type=int, default=1000,
+parser.add_argument('--max_iter', type=int, default=10000,
                     help='the number of max iteration')
 parser.add_argument('--time_horizon', type=int, default=10000,
                     help='the number of time horizon (step number) T ')
@@ -95,7 +95,8 @@ def draw(record, iteration, unitRange):
 
 def main():
     train()
-    #behavior()
+#    behavior()
+#    test()
     
 def behavior():
     '''
@@ -226,14 +227,13 @@ def train():
     
                     gameEnd[game] = np.all(dones)
                     if gameEnd[game]:
-#                        assert np.sum(rewards) == 0
                         if game == 0:
                             print('Game 0 score: %f' % teamscore)
 #                            recordMat = np.stack(record)# stack will expand the dimension before concatenate.
 #                            draw(recordMat, iteration, env[game].getUnitRange())
                         observations[game] = env[game].reset()['observations']
                         lastDone[game] = [False] * 10
-                
+        
         simEnd = time.time()
         print('Simulation time: %.f' % (simEnd-start))
 
@@ -267,7 +267,7 @@ def train():
         trainEnd = time.time()
         print('Training time: %.f' % (trainEnd-simEnd))
 
-        if iteration % 2 == 0:
+        if iteration % 10 == 0:
             model_path = os.path.join(os.getcwd(),'save_model')
             if not os.path.isdir(model_path):
                 os.makedirs(model_path)
