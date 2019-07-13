@@ -59,7 +59,7 @@ def train_model(net, optimizer, states, actions,
     n = len(states)
     arr = np.arange(n)
 
-    for epoch in range(3):# iterations of training on these data.
+    for epoch in range(1):# iterations of training on these data.
         np.random.shuffle(arr)
 
         for i in range(n // args.batch_size):

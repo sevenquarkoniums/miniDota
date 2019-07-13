@@ -15,7 +15,7 @@ class miniDotaEnv:
         self.unitHealthInit = [600, 800, 1000, 1200, 1400, 1200, 1000, 800, 600, 400, 1000, 1000]# last two are bases.
         self.unitAttack = [20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 0, 0]
         self.unitRange = [19, 17, 15, 13, 11, 9, 7, 5, 3, 1, 0, 0]
-        self.teamFactor = 0.2
+        self.teamFactor = 0
         self.args = args
         self.numAgent = numAgent
         self.embed = {}
@@ -127,14 +127,16 @@ class miniDotaEnv:
         self.genObs()
         personalRewards = []
         for agent in range(self.numAgent):
-            thisReward = 0.001*harms[agent] + 1*win[agent]
+            targetBase = 11 if agent in self.team0 else 10
+            thisReward = 0.01*harms[agent] + 10*win[agent] - 0.00001*self.distance[agent, targetBase]
             personalRewards.append(thisReward)
         personalRewards = np.array(personalRewards)
         team0mean = np.dot(1-self.state[:10, 0], personalRewards) / 5
         team1mean = np.dot(self.state[:10, 0], personalRewards) / 5
         teamVec = (1-self.state[:10, 0])*team0mean + self.state[:10, 0]*team1mean
-        oppoMeanVec = (1-self.state[:10, 0])*team1mean + self.state[:10, 0]*team0mean
-        rewards = (1-self.teamFactor) * personalRewards + self.teamFactor * teamVec - oppoMeanVec # make the game zero-sum by minus the opponent's average.
+#        oppoMeanVec = (1-self.state[:10, 0])*team1mean + self.state[:10, 0]*team0mean
+        rewards = (1-self.teamFactor) * personalRewards + self.teamFactor * teamVec
+#        rewards = (1-self.teamFactor) * personalRewards + self.teamFactor * teamVec - oppoMeanVec # make the game zero-sum by minus the opponent's average.
         dead = (self.state[:10,3] <= 0)
         if self.done:
             local_done = np.array([True] * 10)

@@ -144,7 +144,7 @@ def train():
 
     numAgent = 10 # multiple agents are running synchronously.
         # each agent has a different type with different properties.
-    numGame = 4 # multiple games running simultaneously.
+    numGame = 20 # multiple games running simultaneously.
     print('agent count:', numAgent)
     print('Env num:', numGame)
     
@@ -165,12 +165,12 @@ def train():
         ckpt = torch.load(saved_ckpt_path)
         net.load_state_dict(ckpt['net'])
 
-    observations = {}
-#    observations, alive = {}, {}
+#    observations = {}
+    observations, lastDone = {}, {}
     for game in range(numGame):
         observations[game] = env[game].reset()['observations']
-#        observations[game], alive[game] = env[game].reset()['observations']
             # get initial state.
+        lastDone[game] = [False] * 10
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
 
@@ -209,7 +209,6 @@ def train():
                 if not gameEnd[game]:
                     thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
                     envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
-    #                envInfo, nextAlive = env[game].step(thisGameAction) # environment runs one step given the action.
                     nextObs = envInfo['observations'] # get the next state.
                     if game == 0:
                         record.append( np.concatenate([ env[game].getState(), actions[0:10, :].reshape(-1) ]) )
@@ -219,21 +218,20 @@ def train():
                     masks = [True] * numAgent # no need to mask out the last state-action pair.
     
                     for i in range(numAgent):
-    #                    if alive[game][i]:
-                        memory[game][i].push(observations[game][i], thisGameAction[i], rewards[i], masks[i])
-    
+                        if not lastDone[game][i]:
+                            memory[game][i].push(observations[game][i], thisGameAction[i], rewards[i], masks[i])
+                    lastDone[game] = dones
                     if game == 0:
                         teamscore += sum([rewards[x] for x in env[game].getTeam0()])
                     observations[game] = nextObs
-    #                alive[game] = nextAlive
     
         #            if (dones[0] and not lastDones[0]) or steps == args.time_horizon:
                     gameEnd[game] = np.all(dones)
                     if gameEnd[game]:
-                        assert np.sum(rewards) == 0
+#                        assert np.sum(rewards) == 0
                         if game == 0:
                             print('Game 0 score: %f' % teamscore)
-                            recordMat = np.stack(record)# stack will expand the dimension before concatenate.
+#                            recordMat = np.stack(record)# stack will expand the dimension before concatenate.
 #                            draw(recordMat, iteration, env[game].getUnitRange())
                         env[game].reset()
                 
