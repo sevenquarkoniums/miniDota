@@ -264,12 +264,12 @@ def train():
         trainEnd = time.time()
         print('Training time: %.f' % (trainEnd-simEnd))
 
-        if iteration % 10:
+        if iteration % 10 == 0:
             model_path = os.path.join(os.getcwd(),'save_model')
             if not os.path.isdir(model_path):
                 os.makedirs(model_path)
 
-            ckpt_path = os.path.join(model_path, 'ckpt_'+ str(teamscore)+'.pth.tar')
+            ckpt_path = os.path.join(model_path, 'ckpt_%.3f.pth.tar' % teamscore)
 
             save_checkpoint({
                 'net': net.state_dict(),
