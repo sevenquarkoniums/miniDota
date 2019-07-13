@@ -22,8 +22,8 @@ import random
 import time
 import imageio
 from scipy.spatial.distance import euclidean
-random.seed(1)
-torch.manual_seed(1)
+random.seed(2)
+torch.manual_seed(2)
 
 parser = argparse.ArgumentParser(description='Setting for agent')
 parser.add_argument('--load_model', type=str, default=None)
@@ -52,12 +52,17 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 if args.cpuSimulation:
     print('Using CPU for simulation.')
 
-def draw(record, iteration, unitRange):
+def main():
+    train()
+#    behavior()
+#    test(interval=4)
+    
+def draw(record, iteration, unitRange, interval):
     '''
     Draw the action trace of a game.
     '''
     matplotlib.rcParams.update({'font.size': 20})
-    for step in range(0, record.shape[0], 10):
+    for step in range(0, record.shape[0], interval):
         states, actions = record[step, :4*12].reshape((12,4)), record[step, 4*12:].reshape((10,4))
         fig, ax = plt.subplots(figsize=(11,10))
         for player in range(10):
@@ -65,8 +70,10 @@ def draw(record, iteration, unitRange):
                 color = 'green'
             elif states[player,0] == 1:
                 color = 'firebrick'
+#            alpha = 0.2 * (player % 5 + 1)
             if states[player,3] <= 0:
                 color = 'grey'
+#                alpha = 1
             ax.plot(states[player,1], states[player,2], 'o', markersize=10, color=color)
             if actions[player,0] == 2:
                 target = int(actions[player,3])
@@ -81,23 +88,18 @@ def draw(record, iteration, unitRange):
         ax.plot(20, 20, '*', markersize=10, color='green')
         ax.plot(180, 180, '*', markersize=10, color='firebrick')
 
-        plt.title('output/iter%d-step%d' % (iteration, step))
+        plt.title('output/step%d' % (step))
         plt.tight_layout()
         plt.savefig('output/step%d.png' % (step))
         plt.close()
 
     # make gif.
     images = []
-    for istep in range(0, step+1, 10):
+    for istep in range(0, step+1, interval):
         filename = 'output/step%d.png' % (istep)
         images.append(imageio.imread(filename))
     imageio.mimsave('output/iter%d.gif' % iteration, images, duration=0.05)
 
-def main():
-    train()
-#    behavior()
-#    test()
-    
 def behavior():
     '''
     Draw the action probability of the agent at different observations.
@@ -144,7 +146,6 @@ def behavior():
             plt.close()
 
 def train():
-
     numAgent = 10 # multiple agents are running synchronously.
         # each agent has a different type with different properties.
     numGame = 20 # multiple games running simultaneously.
@@ -166,7 +167,6 @@ def train():
         ckpt = torch.load(saved_ckpt_path)
         net.load_state_dict(ckpt['net'])
 
-#    observations = {}
     observations, lastDone = {}, {}
     for game in range(numGame):
         observations[game] = env[game].reset()['observations'] # get initial state.
@@ -230,7 +230,7 @@ def train():
                         if game == 0:
                             print('Game 0 score: %f' % teamscore)
 #                            recordMat = np.stack(record)# stack will expand the dimension before concatenate.
-#                            draw(recordMat, iteration, env[game].getUnitRange())
+#                            draw(recordMat, iteration, env[game].getUnitRange(), 10)
                         observations[game] = env[game].reset()['observations']
                         lastDone[game] = [False] * 10
         
@@ -279,6 +279,69 @@ def train():
                 'args': args,
                 'score': teamscore
             }, filename=ckpt_path)
+
+def test(interval):
+    print('Testing..')
+    numAgent = 10
+    numGame = 1
+    env = {0:miniDotaEnv(args, numAgent)}
+    net = ac(args)
+    if not args.cpuSimulation:
+        net = net.to(device)
+    saved_ckpt_path = os.path.join(os.getcwd(), 'save_model', str(args.load_model))
+    ckpt = torch.load(saved_ckpt_path)
+    net.load_state_dict(ckpt['net'])
+    net.eval()
+    observations = {0:env[0].reset()['observations']}
+
+    for iteration in range(10):
+        start = time.time()
+        print()
+        print('Start iteration %d ..' % iteration)
+        if args.cpuSimulation:
+            net = net.cpu()
+        steps = 0
+        teamscore = 0
+        gameEnd = np.zeros(numGame).astype(bool)
+        record = []
+        
+        while steps <= args.time_horizon: # loop for one round of games.
+            if np.all(gameEnd):
+                break
+            steps += 1
+            stateList = []
+            for game in range(numGame):
+                for agent in range(numAgent):
+                    stateList.append(np.expand_dims(observations[game][agent], axis=0))
+            stateCombined = np.concatenate(stateList, axis=0)
+            with torch.no_grad():
+                actionDistr = net(to_tensor(stateCombined, args.cpuSimulation)) # calculate all envs together.
+            actions = get_action(actionDistr)
+
+            for game in range(numGame):
+                if not gameEnd[game]:
+                    thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
+                    envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
+                    nextObs = envInfo['observations'] # get the next state.
+                    if game == 0:
+                        record.append( np.concatenate([ env[game].getState(), actions[0:10, :].reshape(-1) ]) )
+                    rewards = envInfo['rewards']
+                    dones = envInfo['local_done']
+                    if game == 0:
+                        teamscore += sum([rewards[x] for x in env[game].getTeam0()])
+                    observations[game] = nextObs
+    
+                    gameEnd[game] = np.all(dones)
+                    if gameEnd[game]:
+                        print('Team 0 score: %f' % teamscore)
+                        simEnd = time.time()
+                        print('Simulation time: %.f' % (simEnd-start))
+                        recordMat = np.stack(record)# stack will expand the dimension before concatenate.
+                        draw(recordMat, iteration, env[game].getUnitRange(), interval)
+                        observations[game] = env[game].reset()['observations']
+        
+        drawEnd = time.time()
+        print('Drawing time: %.f' % (drawEnd-simEnd))
 
 if __name__ == "__main__":
     main()

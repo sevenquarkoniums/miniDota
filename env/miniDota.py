@@ -38,6 +38,7 @@ class miniDotaEnv:
         self.state[10, 2] = self.team0Base[1]
         self.state[11, 1] = self.team1Base[0]
         self.state[11, 2] = self.team1Base[1]
+        self.state[11, 0] = 1
         self.state[:, 3] = self.unitHealthInit
         self.interaction = np.zeros((12,12))
             # 1: row is attacking col.
@@ -93,7 +94,7 @@ class miniDotaEnv:
                 actionType, target = actions[agent, 0], actions[agent, 3]
                     # target is agentType.
                 if actionType == 2:# attack.
-                    if agent in self.team0 and target in self.team1 or agent in self.team1 and target in self.team0:
+                    if agent in self.team0 and target in self.team1+[11] or agent in self.team1 and target in self.team0+[10]:
                         # attackable enemy.
                         # this implementation requires the agents to remember the correlation between agentType and their embeddings.
                         if self.distance[agent, target] <= self.unitRange[agent] and self.state[target, 3] > 0:
