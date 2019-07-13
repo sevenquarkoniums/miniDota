@@ -39,10 +39,10 @@ class ac(nn.Module):
         insight = F.relu(self.fcLarge2(F.relu(self.fcLarge1(s))))
 
         value = self.fcValue(insight)
-        action = nn.Softmax(dim=0)(self.fcAction(insight))
-        moveX = nn.Softmax(dim=0)(self.fcX(insight))
-        moveY = nn.Softmax(dim=0)(self.fcY(insight))
-        target = nn.Softmax(dim=0)(self.fcTarget(insight))
+        action = nn.Softmax(dim=1)(self.fcAction(insight))
+        moveX = nn.Softmax(dim=1)(self.fcX(insight))
+        moveY = nn.Softmax(dim=1)(self.fcY(insight))
+        target = nn.Softmax(dim=1)(self.fcTarget(insight))
 
         return (value, action, moveX, moveY, target)
 

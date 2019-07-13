@@ -12,10 +12,10 @@ import numpy as np
 import torch.optim as optim
 from model import ac
 from utils.utils import to_tensor, get_action, save_checkpoint
-from utils.running_state import ZFilter
 from utils.memory import Memory
 from agent.ppo import process_memory, train_model
 from env.miniDota import miniDotaEnv
+import matplotlib
 import matplotlib.pyplot as plt
 from utils.utils import check
 import random
@@ -43,17 +43,21 @@ parser.add_argument('--clip_param', type=float, default=0.1,
                     help='hyper parameter for ppo policy loss and value loss')
 parser.add_argument('--randomActionRatio', type=float, default=0.05,
                     help='A minimum number of random action is enforced.')
+parser.add_argument('--cpuSimulation', action='store_true', 
+                    help='Using CPU for simulation.')
 args = parser.parse_args()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+if args.cpuSimulation:
+    print('Using CPU for simulation.')
 
 def draw(record, iteration, unitRange):
     '''
     Draw the action trace of a game.
     '''
     matplotlib.rcParams.update({'font.size': 20})
-    for step in range(record.shape[0]):
+    for step in range(0, record.shape[0], 10):
         states, actions = record[step, :4*12].reshape((12,4)), record[step, 4*12:].reshape((10,4))
         fig, ax = plt.subplots(figsize=(11,10))
         for player in range(10):
@@ -63,9 +67,9 @@ def draw(record, iteration, unitRange):
                 color = 'firebrick'
             ax.plot(states[player,1], states[player,2], 'o', markersize=10, color=color)
             if actions[player,0] == 2:
-                target = states[player,3]
+                target = int(actions[player,3])
                 if states[target,0] != states[player,0]:
-                    playerPos, targetPos = states[player,1:2], states[target,1:2]
+                    playerPos, targetPos = states[player,1:3], states[target,1:3]
                     if euclidean(playerPos, targetPos) <= unitRange[player] and states[target,3] > 0:
                         ax.plot([playerPos[0], targetPos[0]], [playerPos[1], targetPos[1]], '-', color=color)
         ax.set_xlabel('X')
@@ -77,15 +81,15 @@ def draw(record, iteration, unitRange):
 
         plt.title('output/iter%d-step%d' % (iteration, step))
         plt.tight_layout()
-        plt.savefig('output/iter%d-step%d.png' % (iteration, step))
+        plt.savefig('output/step%d.png' % (step))
         plt.close()
 
     # make gif.
     images = []
-    for istep in range(step+1):
-        filename = 'output/iter%d-step%d.png' % (iteration, istep)
+    for istep in range(0, step+1, 10):
+        filename = 'output/step%d.png' % (istep)
         images.append(imageio.imread(filename))
-    imageio.mimsave('output/iter%d.gif' % iteration, images)
+    imageio.mimsave('output/iter%d.gif' % iteration, images, duration=0.05)
 
 def main():
     train()
@@ -101,10 +105,6 @@ def behavior():
     ckpt = torch.load(saved_ckpt_path)
     actor.load_state_dict(ckpt['actor'])
     critic.load_state_dict(ckpt['critic'])
-    running_state = ZFilter((10, 3), clip=5)
-    running_state.rs.n = ckpt['z_filter_n']
-    running_state.rs.mean = ckpt['z_filter_m']
-    running_state.rs.sum_square = ckpt['z_filter_s']
     actionstr = {0:'left', 1:'right', 2:'down', 3:'up'}
 
     for enemyBaseHealth in [100,50,1]:
@@ -144,7 +144,7 @@ def train():
 
     numAgent = 10 # multiple agents are running synchronously.
         # each agent has a different type with different properties.
-    numGame = 8 # multiple games running simultaneously.
+    numGame = 4 # multiple games running simultaneously.
     print('agent count:', numAgent)
     print('Env num:', numGame)
     
@@ -154,9 +154,11 @@ def train():
 
     # initialize the neural networks.
     # use a single network to share the knowledge.
-    net = ac(args).to(device)
-    if torch.cuda.is_available():
-        net = net.cuda()# useful?
+    net = ac(args)
+    if not args.cpuSimulation:
+        net = net.to(device)
+#    if torch.cuda.is_available():
+#        net = net.cuda()# useful?
 
     if args.load_model is not None:
         saved_ckpt_path = os.path.join(os.getcwd(), 'save_model', str(args.load_model))
@@ -174,9 +176,11 @@ def train():
 
     for iteration in range(args.max_iter):
         start = time.time()
-        if iteration == 0:
-            print('Start iteration 0 ..')
+        print()
+        print('Start iteration %d ..' % iteration)
         net.eval()
+        if args.cpuSimulation:
+            net = net.cpu()
         memory = []
         for i in range(numGame):
             memory.append( [Memory() for j in range(numAgent)] )
@@ -198,7 +202,7 @@ def train():
                 for agent in range(numAgent):
                     stateList.append(np.expand_dims(observations[game][agent], axis=0))
             stateCombined = np.concatenate(stateList, axis=0) # each env is one row.
-            actionDistr = net(to_tensor(stateCombined)) # calculate all envs together.
+            actionDistr = net(to_tensor(stateCombined, args.cpuSimulation)) # calculate all envs together.
             actions = get_action(actionDistr)
 
             for game in range(numGame):
@@ -230,13 +234,16 @@ def train():
                         if game == 0:
                             print('Game 0 score: %f' % teamscore)
                             recordMat = np.stack(record)# stack will expand the dimension before concatenate.
-                            draw(recordMat, iteration, env[game].getUnitRange())
+#                            draw(recordMat, iteration, env[game].getUnitRange())
                         env[game].reset()
                 
         #            lastDones = dones.copy()
 
         simEnd = time.time()
+        print('Simulation time: %.f' % (simEnd-start))
+
         net.train() # switch to training mode.
+        net = net.cuda()
 
         sts, ats, returns, advants, old_policy, old_value = [], [], [], [], [], []
 
@@ -263,7 +270,6 @@ def train():
             # training is based on the state-action pairs from the current iteration.
 
         trainEnd = time.time()
-        print('Simulation time: %.f' % (simEnd-start))
         print('Training time: %.f' % (trainEnd-simEnd))
 
         if iteration % 10:

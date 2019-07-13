@@ -57,16 +57,16 @@ def unitEmbed(agent):
     embed = np.matmul(onehot, mapp)
     return embed # 12-unit row vector.
 
-def to_tensor_long(numpy_array):
-    if torch.cuda.is_available():
+def to_tensor_long(numpy_array, cpuSimulation):
+    if torch.cuda.is_available() and not cpuSimulation:
         variable = torch.LongTensor(numpy_array).cuda()
     else:
         variable = torch.LongTensor(numpy_array).cpu()
     return variable
 
 
-def to_tensor(numpy_array):
-    if torch.cuda.is_available():
+def to_tensor(numpy_array, cpuSimulation):
+    if torch.cuda.is_available() and not cpuSimulation:
         variable = torch.Tensor(numpy_array).cuda()
     else:
         variable = torch.Tensor(numpy_array).cpu()

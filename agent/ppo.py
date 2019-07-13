@@ -38,10 +38,10 @@ def surrogate_loss(net, advants, states, old_policy, actions, index, args):
 
 
 def process_memory(net, batch, args):
-    states = to_tensor(batch.state)
-    actions = to_tensor(batch.action)
-    rewards = to_tensor(batch.reward)
-    masks = to_tensor(batch.mask)
+    states = to_tensor(batch.state, False)
+    actions = to_tensor(batch.action, False)
+    rewards = to_tensor(batch.reward, False)
+    masks = to_tensor(batch.mask, False)
 
     netOutput = net(states)# (value, action, moveX, moveY, target)
     values = netOutput[0]
@@ -64,7 +64,7 @@ def train_model(net, optimizer, states, actions,
 
         for i in range(n // args.batch_size):
             batch_index = arr[args.batch_size * i: args.batch_size * (i + 1)]
-            batch_index = to_tensor_long(batch_index)
+            batch_index = to_tensor_long(batch_index, False)
             inputs = states[batch_index]
             returns_samples = returns.unsqueeze(1)[batch_index]
             advants_samples = advants.unsqueeze(1)[batch_index]
