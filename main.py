@@ -65,6 +65,8 @@ def draw(record, iteration, unitRange):
                 color = 'green'
             elif states[player,0] == 1:
                 color = 'firebrick'
+            if states[player,3] <= 0:
+                color = 'grey'
             ax.plot(states[player,1], states[player,2], 'o', markersize=10, color=color)
             if actions[player,0] == 2:
                 target = int(actions[player,3])
@@ -175,9 +177,9 @@ def train():
         start = time.time()
         print()
         print('Start iteration %d ..' % iteration)
-        net.eval()
         if args.cpuSimulation:
             net = net.cpu()
+        net.eval()
         memory = []
         for i in range(numGame):
             memory.append( [Memory() for j in range(numAgent)] )
@@ -197,8 +199,9 @@ def train():
             for game in range(numGame):
                 for agent in range(numAgent):
                     stateList.append(np.expand_dims(observations[game][agent], axis=0))
-            stateCombined = np.concatenate(stateList, axis=0) # each env is one row.
-            actionDistr = net(to_tensor(stateCombined, args.cpuSimulation)) # calculate all envs together.
+            stateCombined = np.concatenate(stateList, axis=0)
+            with torch.no_grad():
+                actionDistr = net(to_tensor(stateCombined, args.cpuSimulation)) # calculate all envs together.
             actions = get_action(actionDistr)
 
             for game in range(numGame):
@@ -264,7 +267,7 @@ def train():
         trainEnd = time.time()
         print('Training time: %.f' % (trainEnd-simEnd))
 
-        if iteration % 10 == 0:
+        if iteration % 2 == 0:
             model_path = os.path.join(os.getcwd(),'save_model')
             if not os.path.isdir(model_path):
                 os.makedirs(model_path)
