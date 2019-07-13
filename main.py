@@ -157,8 +157,6 @@ def train():
     net = ac(args)
     if not args.cpuSimulation:
         net = net.to(device)
-#    if torch.cuda.is_available():
-#        net = net.cuda()# useful?
 
     if args.load_model is not None:
         saved_ckpt_path = os.path.join(os.getcwd(), 'save_model', str(args.load_model))
@@ -168,8 +166,7 @@ def train():
 #    observations = {}
     observations, lastDone = {}, {}
     for game in range(numGame):
-        observations[game] = env[game].reset()['observations']
-            # get initial state.
+        observations[game] = env[game].reset()['observations'] # get initial state.
         lastDone[game] = [False] * 10
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
@@ -192,7 +189,6 @@ def train():
         record = []
         gameEnd = np.zeros(numGame).astype(bool)
         
-#        lastDones = np.zeros(numAgent).astype(bool)
         while steps <= args.time_horizon: # loop for one round of games.
             if np.all(gameEnd):
                 break
@@ -225,7 +221,6 @@ def train():
                         teamscore += sum([rewards[x] for x in env[game].getTeam0()])
                     observations[game] = nextObs
     
-        #            if (dones[0] and not lastDones[0]) or steps == args.time_horizon:
                     gameEnd[game] = np.all(dones)
                     if gameEnd[game]:
 #                        assert np.sum(rewards) == 0
@@ -233,10 +228,9 @@ def train():
                             print('Game 0 score: %f' % teamscore)
 #                            recordMat = np.stack(record)# stack will expand the dimension before concatenate.
 #                            draw(recordMat, iteration, env[game].getUnitRange())
-                        env[game].reset()
+                        observations[game] = env[game].reset()['observations']
+                        lastDone[game] = [False] * 10
                 
-        #            lastDones = dones.copy()
-
         simEnd = time.time()
         print('Simulation time: %.f' % (simEnd-start))
 
