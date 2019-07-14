@@ -53,9 +53,9 @@ if args.cpuSimulation:
     print('Using CPU for simulation.')
 
 def main():
-    train()
+#    train()
 #    behavior()
-#    test(interval=1, runs=50)
+    test(interval=5, runs=50)
     
 def draw(record, iteration, unitRange, interval):
     '''
@@ -169,7 +169,7 @@ def train():
 
     observations, lastDone = {}, {}
     for game in range(numGame):
-        observations[game] = env[game].reset()['observations'] # get initial state.
+        observations[game] = env[game].reset(0)['observations'] # get initial state.
         lastDone[game] = [False] * 10
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
@@ -231,7 +231,7 @@ def train():
                             print('Game 0 score: %f' % teamscore)
 #                            recordMat = np.stack(record)# stack will expand the dimension before concatenate.
 #                            draw(recordMat, iteration, env[game].getUnitRange(), 10)
-                        observations[game] = env[game].reset()['observations']
+                        observations[game] = env[game].reset(iteration+1)['observations']
                         lastDone[game] = [False] * 10
         
         simEnd = time.time()
@@ -292,7 +292,7 @@ def test(interval, runs):
     ckpt = torch.load(saved_ckpt_path)
     net.load_state_dict(ckpt['net'])
     net.eval()
-    observations = {0:env[0].reset()['observations']}
+    observations = {0:env[0].reset(0)['observations']}
 
     for iteration in range(runs):
         start = time.time()
@@ -338,7 +338,7 @@ def test(interval, runs):
                         print('Simulation time: %.f' % (simEnd-start))
                         recordMat = np.stack(record)# stack will expand the dimension before concatenate.
                         draw(recordMat, iteration, env[game].getUnitRange(), interval)
-                        observations[game] = env[game].reset()['observations']
+                        observations[game] = env[game].reset(iteration+1)['observations']
         
         drawEnd = time.time()
         print('Drawing time: %.f' % (drawEnd-simEnd))

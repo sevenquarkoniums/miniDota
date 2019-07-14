@@ -22,7 +22,8 @@ class miniDotaEnv:
         for unit in range(12):
             self.embed[unit] = unitEmbed(unit)
     
-    def reset(self):
+    def reset(self, iteration):
+        self.iteration = iteration
         self.state = np.zeros((self.numAgent+2, 4))
             # each row for an agent; each column for an attribute.
             # last 2 rows are bases.
@@ -86,7 +87,9 @@ class miniDotaEnv:
         self.distance = cdist(self.state[:, 1:3], self.state[:, 1:3])
         harms = []
         self.interaction = np.zeros((12,12)) # attacking and being attacked.
+        healthOrig = self.state[:, 3]
 
+        # attack is prior to move.
         for agent in range(self.numAgent):
             harm = 0
             if self.state[agent, 3] > 0:# alive.
@@ -104,8 +107,8 @@ class miniDotaEnv:
                             self.interaction[agent, target] = 1
                             self.interaction[target, agent] = -1
             harms.append(harm)
+        injury = healthOrig - self.state[:, 3]
 
-        # attack is prior to move.
         for agent in range(self.numAgent):
             if self.state[agent, 3] > 0:# alive.
                 actionType, offsetX, offsetY = actions[agent,0], actions[agent,1]-1, actions[agent,2]-1
@@ -115,13 +118,13 @@ class miniDotaEnv:
 
         win = [0] * 10
         if self.state[10, 3] <= 0 and self.state[11, 3] <= 0:
-            win = [1]*10
+            win = [0]*10
             self.done = True
         elif self.state[10, 3] <= 0:
-            win = [0,0,0,0,0,1,1,1,1,1]
+            win = [-1]*5 + [1]*5
             self.done = True
         elif self.state[11, 3] <= 0:
-            win = [1,1,1,1,1,0,0,0,0,0]
+            win = [1]*5 + [-1]*5
             self.done = True
 
         self.timestamp += 1
@@ -131,18 +134,22 @@ class miniDotaEnv:
         self.genObs()
         personalRewards = []
         for agent in range(self.numAgent):
+            selfBase = 10 if agent in self.team0 else 11
             targetBase = 11 if agent in self.team0 else 10
-            thisReward = 0.01*harms[agent] + 10*win[agent] - 0.000006*self.distance[agent, targetBase]
+            thisReward = 0.01*harms[agent] - 0.01*injury[agent] - 0.002*injury[selfBase] + \
+                        10*win[agent] - (6e-5 - min(self.iteration, 1800)*333e-10)*self.distance[agent, targetBase]
             personalRewards.append(thisReward)
         personalRewards = np.array(personalRewards)
-        team0mean = np.dot(1-self.state[:10, 0], personalRewards) / 5
-        team1mean = np.dot(self.state[:10, 0], personalRewards) / 5
-        teamVec = (1-self.state[:10, 0])*team0mean + self.state[:10, 0]*team1mean
-        oppoMeanVec = (1-self.state[:10, 0])*team1mean + self.state[:10, 0]*team0mean
-#        rewards = (1-self.teamFactor) * personalRewards + self.teamFactor * teamVec
-        rewards = (1-self.teamFactor) * personalRewards + self.teamFactor * teamVec - oppoMeanVec # make the game zero-sum by minus the opponent's average.
+        rewards = personalRewards
+#        team0mean = np.dot(1-self.state[:10, 0], personalRewards) / 5
+#        team1mean = np.dot(self.state[:10, 0], personalRewards) / 5
+#        teamVec = (1-self.state[:10, 0])*team0mean + self.state[:10, 0]*team1mean
+#        oppoMeanVec = (1-self.state[:10, 0])*team1mean + self.state[:10, 0]*team0mean
+#        rewards = (1-self.teamFactor) * personalRewards + self.teamFactor * teamVec - oppoMeanVec # make the game zero-sum by minus the opponent's average.
+        
         dead = (self.state[:10,3] <= 0)
         if self.done:
+            check(np.sum(rewards))
             local_done = np.array([True] * 10)
         else:
             local_done = dead
