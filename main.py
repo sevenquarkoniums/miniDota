@@ -55,7 +55,7 @@ if args.cpuSimulation:
 def main():
     train()
 #    behavior()
-#    test(interval=2, runs=20)
+#    test(interval=1, runs=30)
     
 def draw(record, iteration, unitRange, interval):
     '''

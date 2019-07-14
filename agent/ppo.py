@@ -22,7 +22,7 @@ def getGA(rewards, masks, values, args):
         previous_value = values.data[t]
         advants[t] = running_advants
 
-    advants = (advants - advants.mean()) / advants.std() # this normalization is common practice.
+    advants = (advants - advants.mean()) / (advants.std() + 1e-15) # this normalization is common practice.
     return returns, advants
 
 
@@ -58,6 +58,7 @@ def train_model(net, optimizer, states, actions,
     criterion = torch.nn.MSELoss()
     n = len(states)
     arr = np.arange(n)
+    record = []
 
     for epoch in range(3):# iterations of training on these data.
         np.random.shuffle(arr)
@@ -91,7 +92,9 @@ def train_model(net, optimizer, states, actions,
 
             loss = actor_loss + 0.5 * critic_loss
                 # 0.5 is an adjustable coefficient.
+            record.append(loss)
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+    print('Avg loss: %f' % (sum(record) / len(record)))

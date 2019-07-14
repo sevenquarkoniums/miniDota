@@ -92,7 +92,7 @@ def log_density(actions, policyDistr):
     prob = torch.sum(action * policyDistr[1], dim=1, keepdim=True) * \
            torch.sum(moveX  * policyDistr[2], dim=1, keepdim=True) * \
            torch.sum(moveY  * policyDistr[3], dim=1, keepdim=True) * \
-           torch.sum(target * policyDistr[4], dim=1, keepdim=True)
+           torch.sum(target * policyDistr[4], dim=1, keepdim=True) + 1e-15
     log_density = torch.log(prob)
     return log_density
 
