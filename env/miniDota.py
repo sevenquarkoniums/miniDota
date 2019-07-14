@@ -132,7 +132,7 @@ class miniDotaEnv:
         personalRewards = []
         for agent in range(self.numAgent):
             targetBase = 11 if agent in self.team0 else 10
-            thisReward = 0.01*harms[agent] + 10*win[agent] - 0.000008*self.distance[agent, targetBase]
+            thisReward = 0.01*harms[agent] + 10*win[agent] - 0.000006*self.distance[agent, targetBase]
             personalRewards.append(thisReward)
         personalRewards = np.array(personalRewards)
         team0mean = np.dot(1-self.state[:10, 0], personalRewards) / 5

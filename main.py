@@ -22,8 +22,8 @@ import random
 import time
 import imageio
 from scipy.spatial.distance import euclidean
-random.seed(2)
-torch.manual_seed(2)
+random.seed(1)
+torch.manual_seed(1)
 
 parser = argparse.ArgumentParser(description='Setting for agent')
 parser.add_argument('--load_model', type=str, default=None)
@@ -41,7 +41,7 @@ parser.add_argument('--l2_rate', type=float, default=0.001,
                     help='l2 regularizer coefficient')
 parser.add_argument('--clip_param', type=float, default=0.1,
                     help='hyper parameter for ppo policy loss and value loss')
-parser.add_argument('--randomActionRatio', type=float, default=0.05,
+parser.add_argument('--randomActionRatio', type=float, default=0.2,
                     help='A minimum number of random action is enforced.')
 parser.add_argument('--cpuSimulation', action='store_true', 
                     help='Using CPU for simulation.')
@@ -55,7 +55,7 @@ if args.cpuSimulation:
 def main():
     train()
 #    behavior()
-#    test(interval=4)
+#    test(interval=1, runs=50)
     
 def draw(record, iteration, unitRange, interval):
     '''
@@ -75,7 +75,7 @@ def draw(record, iteration, unitRange, interval):
                 color = 'grey'
 #                alpha = 1
             ax.plot(states[player,1], states[player,2], 'o', markersize=10, color=color)
-            if actions[player,0] == 2:
+            if actions[player,0] == 2 and states[player,3] > 0:
                 target = int(actions[player,3])
                 if states[target,0] != states[player,0]:
                     playerPos, targetPos = states[player,1:3], states[target,1:3]
@@ -85,11 +85,11 @@ def draw(record, iteration, unitRange, interval):
         ax.set_ylabel('Y')
         ax.set_xlim(-1, 200)
         ax.set_ylim(-1, 200)
-        ax.plot(20, 20, '*', markersize=10, color='green')
-        ax.plot(180, 180, '*', markersize=10, color='firebrick')
+        ax.plot(20, 20, '*', markersize=15, color='green', alpha=states[10, 3] / 1000)
+        ax.plot(180, 180, '*', markersize=15, color='firebrick', alpha=states[11, 3] / 1000)
 
         plt.title('output/step%d' % (step))
-        plt.tight_layout()
+#        plt.tight_layout()
         plt.savefig('output/step%d.png' % (step))
         plt.close()
 
@@ -280,7 +280,7 @@ def train():
                 'score': teamscore
             }, filename=ckpt_path)
 
-def test(interval):
+def test(interval, runs):
     print('Testing..')
     numAgent = 10
     numGame = 1
@@ -294,7 +294,7 @@ def test(interval):
     net.eval()
     observations = {0:env[0].reset()['observations']}
 
-    for iteration in range(10):
+    for iteration in range(runs):
         start = time.time()
         print()
         print('Start iteration %d ..' % iteration)
