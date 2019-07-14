@@ -1,5 +1,6 @@
 '''
 To do:
+    1 update observation: correct team label; add alive; use relative position.
     2 accelerate the environment update.
     3 make the numpy calculation into pytorch.
     4 use multiprocessing for game update.
@@ -17,13 +18,14 @@ from agent.ppo import process_memory, train_model
 from env.miniDota import miniDotaEnv
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from utils.utils import check
 import random
 import time
 import imageio
 from scipy.spatial.distance import euclidean
-random.seed(2)
-torch.manual_seed(2)
+random.seed(0)
+torch.manual_seed(0)
 
 parser = argparse.ArgumentParser(description='Setting for agent')
 parser.add_argument('--load_model', type=str, default=None)
@@ -53,9 +55,9 @@ if args.cpuSimulation:
     print('Using CPU for simulation.')
 
 def main():
-    train()
+#    train()
 #    behavior()
-#    test(interval=1, runs=30)
+    test(interval=1, runs=20)
     
 def draw(record, iteration, unitRange, interval):
     '''
@@ -63,8 +65,11 @@ def draw(record, iteration, unitRange, interval):
     '''
     matplotlib.rcParams.update({'font.size': 20})
     for step in range(0, record.shape[0], interval):
-        states, actions = record[step, :4*12].reshape((12,4)), record[step, 4*12:].reshape((10,4))
-        fig, ax = plt.subplots(figsize=(11,10))
+        states, actions = record[step, :4*12].reshape((12,4)), record[step, 4*12:(4*12+4*10)].reshape((10,4))
+        actionDistr = record[step, (4*12+4*10):].reshape((10,21))
+        fig = plt.figure(1, figsize=(15,9.5))
+        gridspec.GridSpec(4,3)
+        plt.subplot2grid((4,3), (0,0), rowspan=4, colspan=2)
         for player in range(10):
             if states[player,0] == 0:
                 color = 'green'
@@ -74,22 +79,107 @@ def draw(record, iteration, unitRange, interval):
             if states[player,3] <= 0:
                 color = 'grey'
 #                alpha = 1
-            ax.plot(states[player,1], states[player,2], 'o', markersize=10, color=color)
+            plt.plot(states[player,1], states[player,2], 'o', markersize=10, color=color)
             if actions[player,0] == 2 and states[player,3] > 0:
                 target = int(actions[player,3])
                 if states[target,0] != states[player,0]:
                     playerPos, targetPos = states[player,1:3], states[target,1:3]
                     if euclidean(playerPos, targetPos) <= unitRange[player] and states[target,3] > 0:
-                        ax.plot([playerPos[0], targetPos[0]], [playerPos[1], targetPos[1]], '-', color=color)
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_xlim(-1, 200)
-        ax.set_ylim(-1, 200)
-        ax.plot(20, 20, '*', markersize=15, color='green', alpha=states[10, 3] / 1000)
-        ax.plot(180, 180, '*', markersize=15, color='firebrick', alpha=states[11, 3] / 1000)
-
+                        plt.plot([playerPos[0], targetPos[0]], [playerPos[1], targetPos[1]], '-', color=color)
+        plt.plot(20, 20, '*', markersize=15, color='green', alpha=states[10, 3] / 1000)
+        plt.plot(180, 180, '*', markersize=15, color='firebrick', alpha=states[11, 3] / 1000)
+        plt.xlabel('X')
+        plt.ylabel('Y')
+        plt.xlim(-1, 200)
+        plt.ylim(-1, 200)
         plt.title('miniDota step%d' % (step))
-#        plt.tight_layout()
+        
+        tsize = 14
+        plt.subplot2grid((4,3), (0,2))
+        x, y, color = [], [], []
+        for player in range(10):
+            x = x + [4*player+1, 4*player+2, 4*player+3]
+            y = y + list(actionDistr[player, 0:3])
+            if states[player,3] > 0:
+                color = color + ['c', 'b', 'r']
+            else:
+                color = color + ['grey']*3
+            plt.axvline(x=4*player)
+            if states[player,0] == 0:
+                textcolor = 'green'
+            elif states[player,0] == 1:
+                textcolor = 'firebrick'
+            plt.text(4*player+2, 1.1, str(player), size=tsize, color=textcolor, va='center', ha='center')
+        plt.bar(x, y, width=0.8, color=color)
+        plt.xlim(0, 40)
+        plt.ylim(0, 1.2)
+        plt.xticks([])
+        plt.xlabel('Action Probability')
+
+        plt.subplot2grid((4,3), (1,2))
+        x, y, color = [], [], []
+        for player in range(10):
+            x = x + [4*player+1, 4*player+2, 4*player+3]
+            y = y + list(actionDistr[player, 3:6])
+            if states[player,3] > 0:
+                color = color + ['gold', 'c', 'orange']
+            else:
+                color = color + ['grey']*3
+            plt.axvline(x=4*player)
+            if states[player,0] == 0:
+                textcolor = 'green'
+            elif states[player,0] == 1:
+                textcolor = 'firebrick'
+            plt.text(4*player+2, 1.1, str(player), size=tsize, color=textcolor, va='center', ha='center')
+        plt.bar(x, y, width=0.8, color=color)
+        plt.xlim(0, 40)
+        plt.ylim(0, 1.2)
+        plt.xticks([])
+        plt.xlabel('Horizontal Move Probability')
+
+        plt.subplot2grid((4,3), (2,2))
+        x, y, color = [], [], []
+        for player in range(10):
+            x = x + [4*player+1, 4*player+2, 4*player+3]
+            y = y + list(actionDistr[player, 6:9])
+            if states[player,3] > 0:
+                color = color + ['gold', 'c', 'orange']
+            else:
+                color = color + ['grey']*3
+            plt.axvline(x=4*player)
+            if states[player,0] == 0:
+                textcolor = 'green'
+            elif states[player,0] == 1:
+                textcolor = 'firebrick'
+            plt.text(4*player+2, 1.1, str(player), size=tsize, color=textcolor, va='center', ha='center')
+        plt.bar(x, y, width=0.8, color=color)
+        plt.xlim(0, 40)
+        plt.ylim(0, 1.2)
+        plt.xticks([])
+        plt.xlabel('Vertical Move Probability')
+
+        plt.subplot2grid((4,3), (3,2))
+        x, y, color = [], [], []
+        for player in range(4):
+            x = x + [13*player+x for x in range(1, 13)]
+            y = y + list(actionDistr[player, 9:])
+            if states[player,3] > 0:
+                color = color + ['blue']*10+['green']+['firebrick']
+            else:
+                color = color + ['grey']*12
+            plt.axvline(x=13*player)
+            if states[player,0] == 0:
+                textcolor = 'green'
+            elif states[player,0] == 1:
+                textcolor = 'firebrick'
+            plt.text(13*player+6, 1.1, str(player), size=tsize, color=textcolor, va='center', ha='center')
+        plt.bar(x, y, width=0.8, color=color)
+        plt.xlim(0, 52)
+        plt.ylim(0, 1.2)
+        plt.xticks([])
+        plt.xlabel('Target Probability')
+
+        plt.tight_layout()
         plt.savefig('output/step%d.png' % (step))
         plt.close()
 
@@ -333,7 +423,11 @@ def test(interval, runs):
                     envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
                     nextObs = envInfo['observations'] # get the next state.
                     if game == 0:
-                        record.append( np.concatenate([ env[game].getState(), actions[0:10, :].reshape(-1) ]) )
+                        allAction = np.concatenate([actionDistr[x] for x in range(1, 5)], axis=1)
+                        record.append( np.concatenate([ env[game].getState(), 
+                                                       actions[0:10, :].reshape(-1),
+                                                       allAction.reshape(-1)
+                                                       ]) )
                     rewards = envInfo['rewards']
                     dones = envInfo['local_done']
                     if game == 0:

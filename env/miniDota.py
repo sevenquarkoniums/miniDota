@@ -11,7 +11,7 @@ class miniDotaEnv:
         self.xlimit, self.ylimit = 200, 200
         self.team0Fountain, self.team1Fountain = (0, 0), (self.xlimit, self.ylimit)
         self.team0Base, self.team1Base = (20, 20), (self.xlimit-20, self.ylimit-20)
-        self.maxTime = 1000 # min win time: 182.
+        self.maxTime = 500 # min win time: 182.
         self.unitHealthInit = [600, 800, 1000, 1200, 1400, 1200, 1000, 800, 600, 400, 1000, 1000]# last two are bases.
         self.unitAttack = [20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 0, 0]
         self.unitRange = [19, 17, 15, 13, 11, 9, 7, 5, 3, 1, 0, 0]
@@ -66,7 +66,7 @@ class miniDotaEnv:
     def genObs(self):
         '''
         The observation structure is:
-        playerEmbed[10] + allyObs[18]*5 + allyBase[18] + enemyObs[18]*5 + enemyBase[18]
+        playerEmbed[12] + allyObs[20]*5 + allyBase[20] + enemyObs[20]*5 + enemyBase[20]
         '''
         self.observations = {}
 
