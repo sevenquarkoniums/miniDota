@@ -22,8 +22,8 @@ import random
 import time
 import imageio
 from scipy.spatial.distance import euclidean
-random.seed(1)
-torch.manual_seed(1)
+random.seed(2)
+torch.manual_seed(2)
 
 parser = argparse.ArgumentParser(description='Setting for agent')
 parser.add_argument('--load_model', type=str, default=None)
@@ -41,7 +41,7 @@ parser.add_argument('--l2_rate', type=float, default=0.001,
                     help='l2 regularizer coefficient')
 parser.add_argument('--clip_param', type=float, default=0.1,
                     help='hyper parameter for ppo policy loss and value loss')
-parser.add_argument('--randomActionRatio', type=float, default=0.2,
+parser.add_argument('--randomActionRatio', type=float, default=0.3,
                     help='A minimum number of random action is enforced.')
 parser.add_argument('--cpuSimulation', action='store_true', 
                     help='Using CPU for simulation.')
@@ -55,7 +55,7 @@ if args.cpuSimulation:
 def main():
     train()
 #    behavior()
-#    test(interval=5, runs=50)
+#    test(interval=5, runs=20)
     
 def draw(record, iteration, unitRange, interval):
     '''
@@ -88,7 +88,7 @@ def draw(record, iteration, unitRange, interval):
         ax.plot(20, 20, '*', markersize=15, color='green', alpha=states[10, 3] / 1000)
         ax.plot(180, 180, '*', markersize=15, color='firebrick', alpha=states[11, 3] / 1000)
 
-        plt.title('output/step%d' % (step))
+        plt.title('miniDota step%d' % (step))
 #        plt.tight_layout()
         plt.savefig('output/step%d.png' % (step))
         plt.close()
@@ -207,7 +207,13 @@ def train():
 
             for game in range(numGame):
                 if not gameEnd[game]:
-                    thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
+                    sample = random.random()
+                    if sample > args.randomActionRatio * (1 - min(1, iteration/1000) ):
+                        thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
+                    else:
+                        actionmove = np.random.randint(0, 3, size=(10,3))
+                        target = np.random.randint(0, 12, size=(10,1))
+                        thisGameAction = np.concatenate([actionmove, target], axis=1)
                     envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
                     nextObs = envInfo['observations'] # get the next state.
                     if game == 0:
@@ -320,7 +326,13 @@ def test(interval, runs):
 
             for game in range(numGame):
                 if not gameEnd[game]:
-                    thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
+                    sample = random.random()
+                    if sample > args.randomActionRatio * (1 - min(1, iteration/1000) ):
+                        thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
+                    else:
+                        actionmove = np.random.randint(0, 3, size=(10,3))
+                        target = np.random.randint(0, 12, size=(10,1))
+                        thisGameAction = np.concatenate([actionmove, target], axis=1)
                     envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
                     nextObs = envInfo['observations'] # get the next state.
                     if game == 0:

@@ -79,7 +79,9 @@ class miniDotaEnv:
             obs = []
             for obsAgent in order:
                 obsOne = np.array([0, self.interaction[agent, obsAgent], self.state[obsAgent, 3]/1000, self.unitAttack[obsAgent]/100, 
-                    self.unitRange[obsAgent]/10, self.distance[agent, obsAgent]/100, self.state[obsAgent, 1]/100, self.state[obsAgent, 2]/100])
+                    self.unitRange[obsAgent]/10, self.distance[agent, obsAgent]/100, 
+                    (self.state[obsAgent,1])/100, (self.state[obsAgent,2])/100])
+#                    (self.state[obsAgent,1] - self.state[agent,1])/100, (self.state[obsAgent,2] - self.state[agent,2])/100])
                 obs.append( np.concatenate([self.embed[obsAgent], obsOne]) )
             self.observations[agent] = np.concatenate([self.embed[agent]] + obs)
 
