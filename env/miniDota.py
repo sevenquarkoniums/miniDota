@@ -137,7 +137,7 @@ class miniDotaEnv:
             selfBase = 10 if agent in self.team0 else 11
             targetBase = 11 if agent in self.team0 else 10
             thisReward = 0.01*harms[agent] - 0.01*injury[agent] - 0.002*injury[selfBase] + \
-                        10*win[agent] - (6e-5 - min(self.iteration, 1800)*333e-10)*self.distance[agent, targetBase]
+                        10*win[agent] - (6e-5 - min(self.iteration, 1000)*6e-8)*self.distance[agent, targetBase]
             personalRewards.append(thisReward)
         personalRewards = np.array(personalRewards)
         rewards = personalRewards
@@ -149,7 +149,6 @@ class miniDotaEnv:
         
         dead = (self.state[:10,3] <= 0)
         if self.done:
-            check(np.sum(rewards))
             local_done = np.array([True] * 10)
         else:
             local_done = dead

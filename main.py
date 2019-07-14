@@ -53,9 +53,9 @@ if args.cpuSimulation:
     print('Using CPU for simulation.')
 
 def main():
-#    train()
+    train()
 #    behavior()
-    test(interval=5, runs=50)
+#    test(interval=5, runs=50)
     
 def draw(record, iteration, unitRange, interval):
     '''
@@ -148,7 +148,7 @@ def behavior():
 def train():
     numAgent = 10 # multiple agents are running synchronously.
         # each agent has a different type with different properties.
-    numGame = 20 # multiple games running simultaneously.
+    numGame = 40 # multiple games running simultaneously.
     print('agent count:', numAgent)
     print('Env num:', numGame)
     
