@@ -55,7 +55,7 @@ if args.cpuSimulation:
 def main():
     train()
 #    behavior()
-#    test(interval=5, runs=20)
+#    test(interval=2, runs=20)
     
 def draw(record, iteration, unitRange, interval):
     '''
@@ -148,7 +148,7 @@ def behavior():
 def train():
     numAgent = 10 # multiple agents are running synchronously.
         # each agent has a different type with different properties.
-    numGame = 40 # multiple games running simultaneously.
+    numGame = 20 # multiple games running simultaneously.
     print('agent count:', numAgent)
     print('Env num:', numGame)
     
@@ -207,13 +207,16 @@ def train():
 
             for game in range(numGame):
                 if not gameEnd[game]:
-                    sample = random.random()
-                    if sample > args.randomActionRatio * (1 - min(1, iteration/1000) ):
-                        thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
-                    else:
-                        actionmove = np.random.randint(0, 3, size=(10,3))
-                        target = np.random.randint(0, 12, size=(10,1))
-                        thisGameAction = np.concatenate([actionmove, target], axis=1)
+                    # the following random action cannot work.
+#                    sample = random.random()
+#                    if sample > args.randomActionRatio * (1 - min(1, iteration/1000) ):
+#                        thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
+#                        check(thisGameAction)
+#                    else:
+#                        actionmove = np.random.randint(0, 3, size=(10,3))
+#                        target = np.random.randint(0, 12, size=(10,1))
+#                        thisGameAction = np.concatenate([actionmove, target], axis=1)
+                    thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
                     envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
                     nextObs = envInfo['observations'] # get the next state.
                     if game == 0:
@@ -326,13 +329,7 @@ def test(interval, runs):
 
             for game in range(numGame):
                 if not gameEnd[game]:
-                    sample = random.random()
-                    if sample > args.randomActionRatio * (1 - min(1, iteration/1000) ):
-                        thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
-                    else:
-                        actionmove = np.random.randint(0, 3, size=(10,3))
-                        target = np.random.randint(0, 12, size=(10,1))
-                        thisGameAction = np.concatenate([actionmove, target], axis=1)
+                    thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
                     envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
                     nextObs = envInfo['observations'] # get the next state.
                     if game == 0:
