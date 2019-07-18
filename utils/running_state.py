@@ -1,5 +1,5 @@
 import numpy as np
-
+# not used in this branch.
 
 # from https://github.com/joschu/modular_rl
 # http://www.johndcook.com/blog/standard_deviation/

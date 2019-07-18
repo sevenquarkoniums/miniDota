@@ -8,14 +8,14 @@ from scipy.spatial.distance import cdist
 
 class miniDotaEnv:
     def __init__(self, args, numAgent):
-        self.xlimit, self.ylimit = 200, 200
+        self.xlimit, self.ylimit = 200, 200 # map size.
         self.team0Fountain, self.team1Fountain = (0, 0), (self.xlimit, self.ylimit)
         self.team0Base, self.team1Base = (20, 20), (self.xlimit-20, self.ylimit-20)
         self.maxTime = 500 # min win time: 182.
         self.unitHealthInit = [600, 800, 1000, 1200, 1400, 1200, 1000, 800, 600, 400, 1000, 1000]# last two are bases.
         self.unitAttack = [20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 0, 0]
         self.unitRange = [19, 17, 15, 13, 11, 9, 7, 5, 3, 1, 0, 0]
-        self.teamFactor = 0.2
+        self.teamFactor = 0.2 # the ratio of team-part reward.
         self.args = args
         self.numAgent = numAgent
         self.embed = {}
@@ -23,31 +23,32 @@ class miniDotaEnv:
             self.embed[unit] = unitEmbed(unit)
     
     def reset(self, iteration):
-        self.iteration = iteration
+        self.iteration = iteration # get the current iteration number.
         self.state = np.zeros((self.numAgent+2, 4))
-            # each row for an agent; each column for an attribute.
+            # each row for an agent, following agent type order; each column for an attribute.
             # last 2 rows are bases.
             # row idx is the agent type.
             # columns. 0:team, 1:x, 2:y, 3:health
-        self.team1 = sample(range(10), 5)
+        self.team1 = sample(range(10), 5) # randomly choose 5 agents to form team1.
         self.team0 = [x for x in range(10) if x not in self.team1]
         for idx in self.team1:
-            self.state[idx, 0] = 1 # assign team randomly.
+            self.state[idx, 0] = 1
             self.state[idx, 1] = self.xlimit
             self.state[idx, 2] = self.ylimit
-        self.state[10, 1] = self.team0Base[0]
+        self.state[10, 1] = self.team0Base[0] # Base position.
         self.state[10, 2] = self.team0Base[1]
         self.state[11, 1] = self.team1Base[0]
         self.state[11, 2] = self.team1Base[1]
         self.state[11, 0] = 1
         self.state[:, 3] = self.unitHealthInit
         self.interaction = np.zeros((12,12))
-            # 1: row is attacking col.
-            # 0: nothing.
+            # 1: the row unit is attacking the col unit.
+            # 0: nothing happens.
             # -1: row is being attacked by col.
         self.done = False
         self.timestamp = 0
         self.distance = cdist(self.state[:, 1:3], self.state[:, 1:3])
+            # calculate pairwise distance.
         self.genObs()
 #        alive = (self.state[:10,3] > 0)
         return {'observations':self.observations, 'rewards':np.zeros(self.numAgent), 
@@ -78,6 +79,7 @@ class miniDotaEnv:
                 order = self.team1 + [11] + self.team0 + [10]
             obs = []
             for obsAgent in order:
+                # observation values are regularized.
                 obsOne = np.array([0, self.interaction[agent, obsAgent], self.state[obsAgent, 3]/1000, self.unitAttack[obsAgent]/100, 
                     self.unitRange[obsAgent]/10, self.distance[agent, obsAgent]/100, 
                     (self.state[obsAgent,1])/100, (self.state[obsAgent,2])/100])
@@ -114,7 +116,7 @@ class miniDotaEnv:
         for agent in range(self.numAgent):
             if self.state[agent, 3] > 0:# alive.
                 actionType, offsetX, offsetY = actions[agent,0], actions[agent,1]-1, actions[agent,2]-1
-                if actionType == 1:
+                if actionType == 1:# movement limited by the boundary.
                     self.state[agent, 1] = min(self.xlimit, max(0, self.state[agent,1] + offsetX))
                     self.state[agent, 2] = min(self.ylimit, max(0, self.state[agent,2] + offsetY))
 
@@ -139,10 +141,12 @@ class miniDotaEnv:
             selfBase = 10 if agent in self.team0 else 11
             targetBase = 11 if agent in self.team0 else 10
             thisReward = 0.01*harms[agent] - 0.01*injury[agent] - 0.002*injury[selfBase] + \
-                        10*win[agent] - (6e-5 - min(self.iteration, 1000)*6e-8)*self.distance[agent, targetBase]
+                        10*win[agent] - (6e-5 - min(self.iteration/1000, 1)*6e-5)*self.distance[agent, targetBase]
+                        # the distance penalty is gradually reduced.
             personalRewards.append(thisReward)
         personalRewards = np.array(personalRewards)
         rewards = personalRewards
+
 #        team0mean = np.dot(1-self.state[:10, 0], personalRewards) / 5
 #        team1mean = np.dot(self.state[:10, 0], personalRewards) / 5
 #        teamVec = (1-self.state[:10, 0])*team0mean + self.state[:10, 0]*team1mean
@@ -157,5 +161,4 @@ class miniDotaEnv:
         return {'observations':self.observations, 
                 'rewards':rewards, 'local_done':local_done
                 }
-                # copy() may be needed to prevent these value from being changed by processing.
 

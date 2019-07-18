@@ -27,6 +27,7 @@ def getGA(rewards, masks, values, args):
 
 
 def surrogate_loss(net, advants, states, old_policy, actions, index, args):
+    # calculate r*A.
     policyDistr = net(states)
     values = policyDistr[0]
     new_policy = log_density(actions, policyDistr)
