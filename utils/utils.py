@@ -12,6 +12,10 @@ def check(var):
         sys.exit()
 
 def get_one_hot(target, nb_classes):
+    '''
+    example input: (2, 6)
+    output: numpy array [0,0,1,0,0,0]
+    '''
     res = np.eye(nb_classes)[np.array(target)]
     return res
 
@@ -52,7 +56,7 @@ def unitEmbed(agent):
        [ 0.69714513,  0.57098163, -0.71465807,  0.27457825,  0.84032202,
         -0.75805944,  0.54412346,  0.95308094, -1.14018971,  0.73420034,
          0.16497484, -1.39858277]]
-        # from np.random.randn(12, 12).
+        # generated from np.random.randn(12, 12).
     onehot = get_one_hot(agent, 12)
     embed = np.matmul(onehot, mapp)
     return embed # 12-unit row vector.

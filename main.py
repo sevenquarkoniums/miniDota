@@ -1,9 +1,14 @@
 '''
 To do:
-    1 update observation: correct team label; add alive; use relative position.
+    1 update observation: 
+        correct team label in the observation; 
+        add alive state; 
+        use relative position.
+        shuffle the observation unit order.
     2 accelerate the environment update.
-    3 make the numpy calculation into pytorch.
+    3 may make the numpy calculation into pytorch.
     4 use multiprocessing for game update.
+    5 use multi-GPU.
 '''
 
 import os
@@ -30,23 +35,19 @@ torch.manual_seed(0)
 parser = argparse.ArgumentParser(description='Setting for agent')
 parser.add_argument('--load_model', type=str, default=None)
 parser.add_argument('--gamma', type=float, default=0.995, help='discount factor')
-parser.add_argument('--lamda', type=float, default=0.95, help='GAE hyper-parameter')
-parser.add_argument('--hidden_size', type=int, default=512,
-                    help='hidden unit size of actor and critic networks')
-parser.add_argument('--lr', type=float, default=0.001)
+parser.add_argument('--lamda', type=float, default=0.95, help='Policy gradient hyper-parameter')
+parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
 parser.add_argument('--batch_size', type=int, default=1024)
 parser.add_argument('--max_iter', type=int, default=10000,
-                    help='the number of max iteration')
+                    help='the number of iteration in the training.')
 parser.add_argument('--time_horizon', type=int, default=10000,
-                    help='the number of time horizon (step number) T ')
+                    help='the number of max time step for each game. Not used now.')
 parser.add_argument('--l2_rate', type=float, default=0.001,
                     help='l2 regularizer coefficient')
 parser.add_argument('--clip_param', type=float, default=0.1,
                     help='hyper parameter for ppo policy loss and value loss')
-parser.add_argument('--randomActionRatio', type=float, default=0.3,
-                    help='A minimum number of random action is enforced.')
 parser.add_argument('--cpuSimulation', action='store_true', 
-                    help='Using CPU for simulation.')
+                    help='Force using CPU for simulation.')
 args = parser.parse_args()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -62,18 +63,22 @@ def main():
 def draw(record, iteration, unitRange, interval):
     '''
     Draw the action trace of a game.
+    Draw frame by frame, and concatenate them into gif.
     '''
     matplotlib.rcParams.update({'font.size': 20})
     for step in range(0, record.shape[0], interval):
         states, actions = record[step, :4*12].reshape((12,4)), record[step, 4*12:(4*12+4*10)].reshape((10,4))
         actionDistr = record[step, (4*12+4*10):].reshape((10,21))
+
         fig = plt.figure(1, figsize=(15,9.5))
         gridspec.GridSpec(4,3)
+
+        # draw the players on the map.
         plt.subplot2grid((4,3), (0,0), rowspan=4, colspan=2)
         for player in range(10):
-            if states[player,0] == 0:
+            if states[player,0] == 0:# team 0.
                 color = 'green'
-            elif states[player,0] == 1:
+            elif states[player,0] == 1:# team 1.
                 color = 'firebrick'
 #            alpha = 0.2 * (player % 5 + 1)
             if states[player,3] <= 0:
@@ -93,7 +98,8 @@ def draw(record, iteration, unitRange, interval):
         plt.xlim(-1, 200)
         plt.ylim(-1, 200)
         plt.title('miniDota step%d' % (step))
-        
+
+        # draw bar graphs for action probability for all players.
         tsize = 14
         plt.subplot2grid((4,3), (0,2))
         x, y, color = [], [], []
@@ -160,7 +166,7 @@ def draw(record, iteration, unitRange, interval):
 
         plt.subplot2grid((4,3), (3,2))
         x, y, color = [], [], []
-        for player in range(4):
+        for player in range(4):# only some players are drawn.
             x = x + [13*player+x for x in range(1, 13)]
             y = y + list(actionDistr[player, 9:])
             if states[player,3] > 0:
@@ -192,6 +198,7 @@ def draw(record, iteration, unitRange, interval):
 
 def behavior():
     '''
+    Obsolete.
     Draw the action probability of the agent at different observations.
     '''
     actor = Actor(3, 5, args).to(device)
@@ -238,6 +245,8 @@ def behavior():
 def train():
     numAgent = 10 # multiple agents are running synchronously.
         # each agent has a different type with different properties.
+        # Only one network is created, different agent gets their 
+        # own behavior according to the embedding input.
     numGame = 20 # multiple games running simultaneously.
     print('agent count:', numAgent)
     print('Env num:', numGame)
@@ -260,29 +269,30 @@ def train():
     observations, lastDone = {}, {}
     for game in range(numGame):
         observations[game] = env[game].reset(0)['observations'] # get initial state.
-        lastDone[game] = [False] * 10
+        lastDone[game] = [False] * 10 # to record whether game is done at the previous step.
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
 
-    for iteration in range(args.max_iter):
+    for iteration in range(args.max_iter):# playing-training iteration.
         start = time.time()
         print()
         print('Start iteration %d ..' % iteration)
         if args.cpuSimulation:
             net = net.cpu()
-        net.eval()
+        net.eval()# switch to evaluation mode.
         memory = []
         for i in range(numGame):
             memory.append( [Memory() for j in range(numAgent)] )
-                # memory is cleared at every iter so only the current iteration's sample are used in training.
-                # the separation of memory is needed as they need to be processed individually for each episode of game.
+                # memory is cleared at every iter so only the current iteration's samples are used in training.
+                # the separation of memory according to game is necessary as they 
+                # need to be processed separate for each game.
 
         steps = 0
         teamscore = 0 # only for game 0.
-        record = []
+        record = [] # record the states for visualization.
         gameEnd = np.zeros(numGame).astype(bool)
-        
-        while steps <= args.time_horizon: # loop for one round of games.
+
+        while steps <= args.time_horizon: # loop for one game.
             if np.all(gameEnd):
                 break
             steps += 1
@@ -291,13 +301,15 @@ def train():
                 for agent in range(numAgent):
                     stateList.append(np.expand_dims(observations[game][agent], axis=0))
             stateCombined = np.concatenate(stateList, axis=0)
+            # concatenate the states of all games and process them by the network together.
             with torch.no_grad():
-                actionDistr = net(to_tensor(stateCombined, args.cpuSimulation)) # calculate all envs together.
+                actionDistr = net(to_tensor(stateCombined, args.cpuSimulation))
             actions = get_action(actionDistr)
 
             for game in range(numGame):
                 if not gameEnd[game]:
-                    # the following random action cannot work.
+                    # the following random action cannot work, because random action has too small prob density value,
+                    # leading to strange bugs.
 #                    sample = random.random()
 #                    if sample > args.randomActionRatio * (1 - min(1, iteration/1000) ):
 #                        thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
@@ -306,7 +318,7 @@ def train():
 #                        actionmove = np.random.randint(0, 3, size=(10,3))
 #                        target = np.random.randint(0, 12, size=(10,1))
 #                        thisGameAction = np.concatenate([actionmove, target], axis=1)
-                    thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
+                    thisGameAction = actions[10*game:10*(game+1), :] # select the actions from all agents of this env.
                     envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
                     nextObs = envInfo['observations'] # get the next state.
                     if game == 0:
@@ -314,7 +326,8 @@ def train():
                     rewards = envInfo['rewards']
                     dones = envInfo['local_done']
 #                    masks = list(~dones) # cut the return calculation at the done point.
-                    masks = [True] * numAgent # no need to mask out the last state-action pair.
+                    masks = [True] * numAgent # no need to mask out the last state-action pair, 
+                                              # because the last reward is useful to us.
     
                     for i in range(numAgent):
                         if not lastDone[game][i]:
@@ -361,7 +374,7 @@ def train():
 
         train_model(net, optimizer, sts, ats, returns, advants,
                     old_policy, old_value, args)
-            # training is based on the state-action pairs from the current iteration.
+            # training is based on the state-action pairs from all games of the current iteration.
 
         trainEnd = time.time()
         print('Training time: %.f' % (trainEnd-simEnd))

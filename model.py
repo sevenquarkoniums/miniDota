@@ -4,6 +4,9 @@ import torch.nn.functional as F
 
 
 class ac(nn.Module):
+    '''
+    See Network_Architecture.png for more details.
+    '''
     def __init__(self, args):
         self.args = args
         super(ac, self).__init__()
@@ -26,6 +29,7 @@ class ac(nn.Module):
         stateEncode = []
         player = x[:, :10]
         stateEncode.append(player)
+        # unit order in the encoding: 5*ally + allyBase + 5*enemy + enemyBase.
         for ally in range(5):
             allyOut = F.relu(self.fcAlly(F.relu(self.fc2(F.relu(self.fc1(x[:, 12+oneUnitLen*ally:12+oneUnitLen*(ally+1)]))))))# ally agents.
             stateEncode.append(allyOut)
@@ -37,6 +41,7 @@ class ac(nn.Module):
         s = torch.cat(stateEncode, dim=1)
 
         insight = F.relu(self.fcLarge2(F.relu(self.fcLarge1(s))))
+            # this can be extended to RNN or LSTM.
 
         value = self.fcValue(insight)
         action = nn.Softmax(dim=1)(self.fcAction(insight))
