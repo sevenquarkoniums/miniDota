@@ -57,7 +57,7 @@ if args.cpuSimulation:
 def main():
 #    train()
 #    behavior()
-    test(interval=1, runs=20)
+    test(interval=1, runs=1)
     
 def draw(record, iteration, unitRange, interval):
     '''
@@ -383,6 +383,7 @@ def test(interval, runs):
     print('Testing..')
     numAgent = 10
     numGame = 1
+    assert numGame==1 # needed.
     env = {0:miniDotaEnv(args, numAgent)}
     net = ac(args)
     if not args.cpuSimulation:
@@ -403,6 +404,7 @@ def test(interval, runs):
         teamscore = 0
         gameEnd = np.zeros(numGame).astype(bool)
         record = []
+        teamLabel = env[0].getState().reshape((12, 4))[:10, 0]
         
         while steps <= args.time_horizon: # loop for one round of games.
             if np.all(gameEnd):
@@ -420,18 +422,19 @@ def test(interval, runs):
             for game in range(numGame):
                 if not gameEnd[game]:
                     thisGameAction = actions[10*game:10*(game+1), :] # contain actions from all agents.
+#                    for player in range(10):
+#                        if teamLabel[player] == 0 and steps < 100:
+#                            thisGameAction[player] = [0, 1, 1, 0] # ablation test.
                     envInfo = env[game].step(thisGameAction) # environment runs one step given the action.
                     nextObs = envInfo['observations'] # get the next state.
-                    if game == 0:
-                        allAction = np.concatenate([actionDistr[x] for x in range(1, 5)], axis=1)
-                        record.append( np.concatenate([ env[game].getState(), 
-                                                       actions[0:10, :].reshape(-1),
-                                                       allAction.reshape(-1)
-                                                       ]) )
+                    allAction = np.concatenate([actionDistr[x] for x in range(1, 5)], axis=1)
+                    record.append( np.concatenate([ env[0].getState(), 
+                                                   actions[0:10, :].reshape(-1),
+                                                   allAction.reshape(-1)
+                                                   ]) )
                     rewards = envInfo['rewards']
                     dones = envInfo['local_done']
-                    if game == 0:
-                        teamscore += sum([rewards[x] for x in env[game].getTeam0()])
+                    teamscore += sum([rewards[x] for x in env[0].getTeam0()])
                     observations[game] = nextObs
     
                     gameEnd[game] = np.all(dones)
